@@ -1,189 +1,523 @@
-import React, { useEffect, useRef, useState, useCallback } from 'react';
-import * as THREE from 'three';
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Roblox Obby Adventure</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <style>
+    body { margin: 0; overflow: hidden; background-color: #000; touch-action: none; user-select: none; }
+    canvas { display: block; }
+    ::-webkit-scrollbar { width: 8px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #475569; border-radius: 4px; }
+  </style>
+</head>
+<body>
 
-/**
- * Roblox-style Obby Adventure
- * A 3D platformer built with React and Three.js
- */
+  <!-- 3D 렌더링 컨테이너 -->
+  <div id="game-container" class="absolute inset-0"></div>
 
-const App = () => {
-  const mountRef = useRef(null);
-  const [stats, setStats] = useState({ gold: 0, robux: 10, level: 1 });
-  const [modal, setModal] = useState(null);
-  const [ownedItems, setOwnedItems] = useState([]);
-  const [gameMsg, setGameMsg] = useState("Use WASD/Joystick to move, SPACE to jump!");
+  <!-- 게임 타이틀 -->
+  <div class="absolute top-4 left-1/2 -translate-x-1/2 pointer-events-none z-10 w-full text-center">
+    <h1 class="text-3xl sm:text-4xl md:text-5xl font-black text-white tracking-wider drop-shadow-xl" style="text-shadow: 3px 3px 0 #000, -2px -2px 0 #000, 2px -2px 0 #000, -2px 2px 0 #000, 2px 2px 0 #000;">
+      Minho Obby Game
+    </h1>
+  </div>
 
-  // Game Engine State (Mutable to avoid React re-render lag)
-  const game = useRef({
-    scene: null,
-    camera: null,
-    renderer: null,
-    player: { group: null, lArm: null, rArm: null, lLeg: null, rLeg: null },
-    platforms: [],
-    coins: [],
-    finishLine: null,
-    vY: 0,
-    onGround: false,
-    jumpCount: 0,
-    maxJumps: 1,
-    joy: { x: 0, z: 0 },
-    keys: { w: false, a: false, s: false, d: false, space: false },
-    speedM: 1,
-    jumpM: 1,
-    gravityM: 1,
-    walkCycle: 0,
-    isPaused: false,
-    checkpoint: new THREE.Vector3(0, 5, 0),
-  });
+  <!-- 상단 HUD -->
+  <div class="absolute top-16 sm:top-6 left-6 right-6 flex justify-between items-start pointer-events-none z-10">
+    <div class="flex gap-4">
+      <div class="bg-black/60 backdrop-blur-md border-2 border-yellow-400 px-4 py-2 rounded-2xl text-white font-black flex items-center gap-3 pointer-events-auto shadow-lg">
+        <span class="text-2xl drop-shadow-md">💰</span> 
+        <span id="gold-display" class="text-xl">0</span>
+      </div>
+      <div class="bg-black/60 backdrop-blur-md border-2 border-green-400 px-4 py-2 rounded-2xl text-white font-black flex items-center gap-3 pointer-events-auto shadow-lg">
+        <span class="text-green-400">LEVEL</span> 
+        <span id="level-display" class="text-xl">1</span>
+        <span class="text-green-400 text-xs ml-1">/ 7</span>
+      </div>
+    </div>
+  </div>
 
-  // --- UI Helpers ---
-  const showMessage = (msg) => {
-    setGameMsg(msg);
-    setTimeout(() => setGameMsg(""), 4000);
-  };
+  <!-- 게임 메시지 오버레이 -->
+  <div id="msg-overlay" class="absolute top-24 left-1/2 -translate-x-1/2 bg-black/70 text-white px-6 py-3 rounded-full font-bold text-lg animate-bounce pointer-events-none text-center shadow-xl border border-white/20 z-10 transition-opacity duration-300">
+    Use WASD/Arrows/Joystick to move, SPACE to jump!
+  </div>
 
-  const handleJump = useCallback(() => {
-    const g = game.current;
-    if (g.onGround || g.jumpCount < g.maxJumps) {
-      g.vY = 0.38 * g.jumpM;
-      g.jumpCount++;
-      g.onGround = false;
-    }
-  }, []);
+  <!-- 사이드 버튼 (상점) -->
+  <div class="absolute left-6 top-1/2 -translate-y-1/2 flex flex-col gap-4 pointer-events-auto z-10">
+    <button id="shop-btn" class="w-16 h-16 sm:w-20 sm:h-20 bg-gradient-to-b from-yellow-400 to-yellow-600 rounded-3xl shadow-xl flex flex-col items-center justify-center text-white font-black active:scale-90 transition-transform border-b-4 border-yellow-700">
+      <span class="text-2xl sm:text-3xl">🛒</span>
+      <span class="text-[10px] sm:text-xs">SHOP</span>
+    </button>
+  </div>
 
-  useEffect(() => {
-    // 1. Scene Setup
-    const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x80dfff); // Roblox Sky Blue
-    scene.fog = new THREE.Fog(0x80dfff, 20, 100);
-    game.current.scene = scene;
+  <!-- 모바일 컨트롤 (데스크탑에서는 숨김) -->
+  <div class="sm:hidden z-10">
+    <!-- 조이스틱 -->
+    <div id="joystick-zone" class="absolute bottom-12 left-8 w-32 h-32 bg-white/10 backdrop-blur-sm rounded-full border-4 border-white/30 flex items-center justify-center pointer-events-auto shadow-[0_0_30px_rgba(0,0,0,0.3)]">
+      <div id="joystick-knob" class="w-14 h-14 bg-white/80 rounded-full shadow-inner transition-transform duration-75"></div>
+    </div>
 
-    const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-    game.current.camera = camera;
+    <!-- 점프 버튼 -->
+    <button id="jump-btn" class="absolute bottom-12 right-8 w-24 h-24 bg-white/20 backdrop-blur-sm border-4 border-white/50 rounded-full text-white font-black text-xl active:scale-75 transition-transform pointer-events-auto shadow-[0_0_30px_rgba(0,0,0,0.3)] flex items-center justify-center">
+      JUMP
+    </button>
+  </div>
 
-    const renderer = new THREE.WebGLRenderer({ antialias: true });
-    renderer.setSize(window.innerWidth, window.innerHeight);
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-    renderer.shadowMap.enabled = true;
-    mountRef.current.appendChild(renderer.domElement);
-    game.current.renderer = renderer;
+  <!-- 상점 모달 -->
+  <div id="shop-modal" class="hidden absolute inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center p-4 z-50">
+    <div class="bg-slate-900 rounded-[40px] w-full max-w-md p-8 shadow-2xl border border-slate-700 flex flex-col max-h-[90vh]">
+      <div class="flex justify-between items-center mb-6 shrink-0">
+        <h2 class="text-3xl font-black text-white">🛒 Upgrade Shop</h2>
+        <button id="close-shop-btn" class="text-4xl text-slate-400 hover:text-white transition-colors">&times;</button>
+      </div>
+      
+      <div id="shop-items-container" class="space-y-4 overflow-y-auto pr-2 pb-2">
+        <!-- 상점 아이템들이 여기에 JS로 생성됩니다 -->
+      </div>
+    </div>
+  </div>
 
-    // Lighting
-    scene.add(new THREE.AmbientLight(0xffffff, 0.6));
-    const sun = new THREE.DirectionalLight(0xffffff, 0.8);
-    sun.position.set(20, 50, 20);
-    sun.castShadow = true;
-    scene.add(sun);
+  <!-- 게임 클리어 모달 -->
+  <div id="clear-modal" class="hidden absolute inset-0 bg-black/90 backdrop-blur-md flex items-center justify-center p-4 z-50">
+    <div class="bg-slate-900 rounded-[40px] w-full max-w-md p-8 shadow-2xl border-4 border-yellow-500 flex flex-col items-center text-center">
+      <h2 class="text-4xl font-black text-yellow-400 mb-2">🏆 GAME CLEARED!</h2>
+      <p class="text-slate-300 text-lg mb-8">Congratulations! You conquered Level 7 of Minho Obby Game!</p>
+      <button id="restart-btn" class="w-full bg-gradient-to-r from-yellow-400 to-yellow-600 hover:from-yellow-300 hover:to-yellow-500 text-slate-900 font-black text-xl px-6 py-4 rounded-2xl shadow-lg transition-transform active:scale-95">
+        PLAY AGAIN
+      </button>
+    </div>
+  </div>
 
-    // 2. Character Creation (Classic Noob)
-    const pGroup = new THREE.Group();
-    const skinMat = new THREE.MeshLambertMaterial({ color: 0xFFDB00 }); // Yellow
-    const torsoMat = new THREE.MeshLambertMaterial({ color: 0x005BB2 }); // Blue
-    const legMat = new THREE.MeshLambertMaterial({ color: 0x333333 });   // Dark
+  <script>
+    // --- 게임 상태 및 데이터 ---
+    const stats = { gold: 0, level: 1 };
+    let ownedItems = [];
+    let msgTimeout = null;
+    let animationId = null;
 
-    const torso = new THREE.Mesh(new THREE.BoxGeometry(0.8, 1.1, 0.45), torsoMat);
-    torso.position.y = 1.05;
-    pGroup.add(torso);
-
-    const head = new THREE.Mesh(new THREE.BoxGeometry(0.65, 0.65, 0.65), skinMat);
-    head.position.y = 1.95;
-    pGroup.add(head);
-
-    const createLimb = (x, y, mat, geoW = 0.38, geoH = 1.0) => {
-      const g = new THREE.Group();
-      g.position.set(x, y, 0);
-      const m = new THREE.Mesh(new THREE.BoxGeometry(geoW, geoH, 0.38), mat);
-      m.position.y = -geoH/2;
-      g.add(m);
-      return g;
+    const game = {
+      scene: null, camera: null, renderer: null,
+      player: { group: null, lArm: null, rArm: null, lLeg: null, rLeg: null },
+      platforms: [], coins: [], mapMeshes: [], finishLine: null,
+      vY: 0, onGround: false, jumpCount: 0, maxJumps: 1,
+      joy: { x: 0, z: 0 },
+      keys: { w: false, a: false, s: false, d: false, space: false },
+      speedM: 1, jumpM: 1, gravityM: 1, walkCycle: 0, isPaused: false,
+      checkpoint: new THREE.Vector3(0, 5, 0),
+      camAngle: { theta: 0, phi: 0.4 }, 
+      camRadius: 15,
+      isDraggingCamera: false
     };
 
-    const lArm = createLimb(-0.6, 1.5, skinMat, 0.35, 0.9);
-    const rArm = createLimb(0.6, 1.5, skinMat, 0.35, 0.9);
-    const lLeg = createLimb(-0.22, 0.5, legMat);
-    const rLeg = createLimb(0.22, 0.5, legMat);
+    const shopItems = [
+      { id: 'double', name: "Double Jump", desc: "Jump one more time in mid-air!", cost: 50, icon: "👟", effect: () => { game.maxJumps = 2; showMessage("Double Jump Unlocked!"); } },
+      { id: 'speed', name: "Speed Coil", desc: "Run 50% faster!", cost: 150, icon: "⚡", effect: () => { game.speedM = 1.5; showMessage("Speed Coil Equipped!"); } },
+      { id: 'gravity', name: "Moon Gravity", desc: "Float like a feather.", cost: 300, icon: "🌑", effect: () => { game.gravityM = 0.5; game.jumpM = 0.8; showMessage("Moon Gravity Enabled!"); } },
+    ];
 
-    pGroup.add(lArm, rArm, lLeg, rLeg);
-    pGroup.position.copy(game.current.checkpoint);
-    scene.add(pGroup);
-    game.current.player = { group: pGroup, lArm, rArm, lLeg, rLeg };
+    // --- UI 업데이트 함수 ---
+    const elements = {
+      goldDisplay: document.getElementById('gold-display'),
+      levelDisplay: document.getElementById('level-display'),
+      msgOverlay: document.getElementById('msg-overlay'),
+      shopModal: document.getElementById('shop-modal'),
+      clearModal: document.getElementById('clear-modal'),
+      restartBtn: document.getElementById('restart-btn'),
+      shopItemsContainer: document.getElementById('shop-items-container'),
+      shopBtn: document.getElementById('shop-btn'),
+      closeShopBtn: document.getElementById('close-shop-btn'),
+      joystickZone: document.getElementById('joystick-zone'),
+      joystickKnob: document.getElementById('joystick-knob'),
+      jumpBtn: document.getElementById('jump-btn'),
+      gameContainer: document.getElementById('game-container')
+    };
 
-    // 3. Map Generation
-    const buildMap = () => {
-      const addPlatform = (x, y, z, w, d, color = 0x4caf50) => {
+    function updateStatsUI() {
+      elements.goldDisplay.innerText = stats.gold;
+      elements.levelDisplay.innerText = stats.level;
+      renderShopItems();
+    }
+
+    function showMessage(msg) {
+      elements.msgOverlay.innerText = msg;
+      elements.msgOverlay.classList.remove('opacity-0');
+      
+      if (msgTimeout) clearTimeout(msgTimeout);
+      msgTimeout = setTimeout(() => {
+        elements.msgOverlay.classList.add('opacity-0');
+      }, 4000);
+    }
+
+    setTimeout(() => { elements.msgOverlay.classList.add('opacity-0'); }, 4000);
+
+    // --- 상점 & 모달 로직 ---
+    elements.shopBtn.addEventListener('click', () => { elements.shopModal.classList.remove('hidden'); });
+    elements.closeShopBtn.addEventListener('click', () => { elements.shopModal.classList.add('hidden'); });
+
+    elements.restartBtn.addEventListener('click', () => {
+      elements.clearModal.classList.add('hidden');
+      stats.level = 1;
+      stats.gold = 0;
+      ownedItems = [];
+      game.maxJumps = 1;
+      game.speedM = 1;
+      game.gravityM = 1;
+      game.jumpM = 1;
+      updateStatsUI();
+      buildMap(game.scene);
+      game.player.group.position.copy(game.checkpoint);
+      game.player.group.rotation.y = 0;
+      game.camAngle.theta = 0;
+      game.camAngle.phi = 0.4;
+      game.vY = 0;
+      game.isPaused = false;
+      showMessage("Game Restarted! Good luck!");
+    });
+
+    function renderShopItems() {
+      elements.shopItemsContainer.innerHTML = '';
+      shopItems.forEach(item => {
+        const isOwned = ownedItems.includes(item.id);
+        const canAfford = stats.gold >= item.cost;
+        
+        const itemDiv = document.createElement('div');
+        itemDiv.className = 'flex justify-between items-center bg-slate-800 p-4 rounded-3xl border border-slate-700';
+        itemDiv.innerHTML = `
+          <div class="flex gap-4 items-center">
+            <span class="text-4xl bg-slate-700 p-2 rounded-2xl">${item.icon}</span>
+            <div>
+              <p class="font-black text-white text-lg">${item.name}</p>
+              <p class="text-xs text-slate-400 mt-1">${item.desc}</p>
+            </div>
+          </div>
+          <button id="buy-${item.id}" class="font-black px-4 py-3 rounded-xl transition-colors shadow-lg
+            ${isOwned ? 'bg-green-500 text-white' : canAfford ? 'bg-yellow-500 hover:bg-yellow-400 text-slate-900 cursor-pointer' : 'bg-slate-700 text-slate-500 cursor-not-allowed'}">
+            ${isOwned ? 'OWNED' : `💰 ${item.cost}`}
+          </button>
+        `;
+        
+        elements.shopItemsContainer.appendChild(itemDiv);
+
+        const buyBtn = itemDiv.querySelector(`#buy-${item.id}`);
+        buyBtn.addEventListener('click', () => {
+          if (!isOwned && canAfford) {
+            stats.gold -= item.cost;
+            ownedItems.push(item.id);
+            item.effect();
+            updateStatsUI();
+          }
+        });
+      });
+    }
+    renderShopItems();
+
+    // --- 점프 로직 ---
+    function handleJump() {
+      if (game.onGround || game.jumpCount < game.maxJumps) {
+        game.vY = 0.38 * game.jumpM;
+        game.jumpCount++;
+        game.onGround = false;
+      }
+    }
+    elements.jumpBtn.addEventListener('pointerdown', (e) => {
+        e.preventDefault(); 
+        e.stopPropagation(); 
+        handleJump();
+    });
+
+    // --- 3D 게임 초기화 ---
+    window.onload = function() {
+      initThreeJS();
+      initControls();
+      initCameraControls();
+      animate();
+    };
+
+    function initCameraControls() {
+      let isDragging = false;
+      let previousPosition = { x: 0, y: 0 };
+      let activeTouchId = null;
+
+      elements.gameContainer.style.cursor = 'grab';
+
+      const startDrag = (e, x, y) => {
+        if (e.target.closest('#shop-modal') || e.target.closest('#clear-modal') || e.target.closest('button') || e.target.closest('.pointer-events-auto') || e.target.closest('#joystick-zone')) return;
+        isDragging = true;
+        game.isDraggingCamera = true;
+        previousPosition = { x, y };
+        elements.gameContainer.style.cursor = 'grabbing';
+      };
+
+      const doDrag = (x, y) => {
+        if (!isDragging) return;
+        const deltaX = x - previousPosition.x;
+        const deltaY = y - previousPosition.y;
+        previousPosition = { x, y };
+        game.camAngle.theta -= deltaX * 0.006;
+        game.camAngle.phi += deltaY * 0.006;
+        game.camAngle.phi = Math.max(-0.2, Math.min(Math.PI / 2 - 0.1, game.camAngle.phi));
+      };
+
+      const endDrag = () => {
+        isDragging = false;
+        game.isDraggingCamera = false;
+        activeTouchId = null;
+        elements.gameContainer.style.cursor = 'grab';
+      };
+
+      elements.gameContainer.addEventListener('mousedown', (e) => startDrag(e, e.clientX, e.clientY));
+      window.addEventListener('mousemove', (e) => doDrag(e.clientX, e.clientY));
+      window.addEventListener('mouseup', endDrag);
+
+      elements.gameContainer.addEventListener('touchstart', (e) => {
+        if (activeTouchId !== null) return;
+        const touch = e.changedTouches[0];
+        activeTouchId = touch.identifier;
+        startDrag(e, touch.clientX, touch.clientY);
+      }, { passive: false });
+
+      window.addEventListener('touchmove', (e) => {
+        for (let i = 0; i < e.changedTouches.length; i++) {
+          if (e.changedTouches[i].identifier === activeTouchId) {
+            doDrag(e.changedTouches[i].clientX, e.changedTouches[i].clientY);
+          }
+        }
+      }, { passive: false });
+
+      window.addEventListener('touchend', (e) => {
+        for (let i = 0; i < e.changedTouches.length; i++) {
+          if (e.changedTouches[i].identifier === activeTouchId) endDrag();
+        }
+      });
+      window.addEventListener('touchcancel', (e) => {
+        for (let i = 0; i < e.changedTouches.length; i++) {
+          if (e.changedTouches[i].identifier === activeTouchId) endDrag();
+        }
+      });
+    }
+
+    function initThreeJS() {
+      const scene = new THREE.Scene();
+      scene.background = new THREE.Color(0x80dfff);
+      scene.fog = new THREE.Fog(0x80dfff, 20, 100);
+      game.scene = scene;
+
+      const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+      game.camera = camera;
+
+      const renderer = new THREE.WebGLRenderer({ antialias: true });
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+      renderer.shadowMap.enabled = true;
+      elements.gameContainer.appendChild(renderer.domElement);
+      game.renderer = renderer;
+
+      scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+      const sun = new THREE.DirectionalLight(0xffffff, 0.8);
+      sun.position.set(20, 50, 20);
+      sun.castShadow = true;
+      scene.add(sun);
+
+      const pGroup = new THREE.Group();
+      const skinMat = new THREE.MeshLambertMaterial({ color: 0xFFDB00 });
+      const torsoMat = new THREE.MeshLambertMaterial({ color: 0x005BB2 });
+      const legMat = new THREE.MeshLambertMaterial({ color: 0x333333 });
+
+      const torso = new THREE.Mesh(new THREE.BoxGeometry(0.8, 1.1, 0.45), torsoMat);
+      torso.position.y = 1.05;
+      pGroup.add(torso);
+
+      const head = new THREE.Mesh(new THREE.BoxGeometry(0.65, 0.65, 0.65), skinMat);
+      head.position.y = 1.95;
+      pGroup.add(head);
+
+      const createLimb = (x, y, mat, geoW = 0.38, geoH = 1.0) => {
+        const g = new THREE.Group();
+        g.position.set(x, y, 0);
+        const m = new THREE.Mesh(new THREE.BoxGeometry(geoW, geoH, 0.38), mat);
+        m.position.y = -geoH/2;
+        g.add(m);
+        return g;
+      };
+
+      const lArm = createLimb(-0.6, 1.5, skinMat, 0.35, 0.9);
+      const rArm = createLimb(0.6, 1.5, skinMat, 0.35, 0.9);
+      const lLeg = createLimb(-0.22, 0.5, legMat);
+      const rLeg = createLimb(0.22, 0.5, legMat);
+
+      pGroup.add(lArm, rArm, lLeg, rLeg);
+      pGroup.position.copy(game.checkpoint);
+      scene.add(pGroup);
+      game.player = { group: pGroup, lArm, rArm, lLeg, rLeg };
+
+      buildMap(scene);
+
+      window.addEventListener('resize', () => {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+      });
+    }
+
+    // --- 레벨에 따라 맵 스케일링을 동적으로 처리하는 함수 ---
+    function buildMap(scene) {
+      // 1. 이전 맵 데이터 초기화
+      game.mapMeshes.forEach(mesh => scene.remove(mesh));
+      game.mapMeshes = [];
+      game.platforms = [];
+      game.coins = [];
+
+      // 2. 레벨 기반 난이도 계산 (레벨 1 -> 0.0, 레벨 7 -> 1.0)
+      const progress = Math.min((stats.level - 1) / 6, 1);
+      
+      // 레벨 1: 이전의 레벨 4 수준(10) / 레벨 7: 매우 작음(2)
+      const platformSize = THREE.MathUtils.lerp(10, 2, progress);
+      // 레벨 1: 이전의 레벨 4 수준(-14) / 레벨 7: 풀템이어야 도달 가능한 극한의 거리(-30)
+      const zSpacing = THREE.MathUtils.lerp(-14, -30, progress);
+      // 레벨이 오를수록 좌우(x)와 상하(y) 편차가 심해짐 (시작점 상향)
+      const xSpread = THREE.MathUtils.lerp(3.5, 10, progress);
+      const ySpread = THREE.MathUtils.lerp(1.5, 5, progress);
+
+      const addPlatform = (x, y, z, w, d, color) => {
         const mesh = new THREE.Mesh(
           new THREE.BoxGeometry(w, 15, d),
           new THREE.MeshLambertMaterial({ color })
         );
         mesh.position.set(x, y - 7.5, z);
         scene.add(mesh);
-        game.current.platforms.push({ x, y, z, w, d });
+        game.platforms.push({ x, y, z, w, d });
+        game.mapMeshes.push(mesh);
       };
 
-      // Spawn Area
+      // 시작 영역 (항상 넉넉하게)
       addPlatform(0, 0, 0, 15, 15, 0x999999);
 
-      // Procedural Obby Steps
+      // 절차적 장애물 코스 (Obby)
       for (let i = 1; i <= 30; i++) {
-        const z = i * -8;
-        const x = Math.sin(i * 0.7) * 5;
-        const y = Math.sin(i * 0.4) * 2;
-        const color = i % 3 === 0 ? 0xff5722 : (i % 2 === 0 ? 0x2196f3 : 0x4caf50);
-        addPlatform(x, y, z, 4.5, 4.5, color);
+        const z = i * zSpacing;
+        const x = Math.sin(i * 0.5) * xSpread;
+        const y = Math.sin(i * 0.3) * ySpread;
+        
+        // 레벨에 따라 맵의 테마 색상이 아름답게 변하도록 설정
+        const hue = ((stats.level - 1) * 0.1 + i * 0.02) % 1.0;
+        const color = new THREE.Color().setHSL(hue, 0.8, 0.5);
+        
+        addPlatform(x, y, z, platformSize, platformSize, color);
 
-        // Add Coin
+        // 코인 추가
         const coin = new THREE.Mesh(
           new THREE.CylinderGeometry(0.4, 0.4, 0.15, 16),
           new THREE.MeshPhongMaterial({ color: 0xffd700, shininess: 100 })
         );
         coin.position.set(x, y + 1.5, z);
         coin.rotation.x = Math.PI / 2;
+        coin.userData.collected = false;
         scene.add(coin);
-        game.current.coins.push({ mesh: coin, id: i });
+        game.coins.push({ mesh: coin, id: i });
+        game.mapMeshes.push(coin);
       }
 
-      // Finish Line
-      const finishZ = -255;
+      // 결승선
+      const finishZ = 32 * zSpacing;
       const finishMesh = new THREE.Mesh(
         new THREE.BoxGeometry(20, 15, 20),
         new THREE.MeshLambertMaterial({ color: 0xFFD700 })
       );
       finishMesh.position.set(0, 0 - 7.5, finishZ);
       scene.add(finishMesh);
-      game.current.finishLine = { x: 0, y: 0, z: finishZ, w: 20, d: 20 };
+      game.finishLine = { x: 0, y: 0, z: finishZ, w: 20, d: 20 };
+      game.mapMeshes.push(finishMesh);
       
-      // Winner platform decoration
+      // 결승선 장식
       const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.2, 8), new THREE.MeshLambertMaterial({color: 0xffffff}));
       pole.position.set(0, 4, finishZ);
       scene.add(pole);
-    };
-    buildMap();
+      game.mapMeshes.push(pole);
+    }
 
-    // 4. Keyboard Controls Setup
-    const handleKeyDown = (e) => {
-      const k = e.key.toLowerCase();
-      if (game.current.keys.hasOwnProperty(k)) game.current.keys[k] = true;
-      if (e.code === 'Space') {
-          game.current.keys.space = true;
-          handleJump();
-      }
-    };
-    const handleKeyUp = (e) => {
-      const k = e.key.toLowerCase();
-      if (game.current.keys.hasOwnProperty(k)) game.current.keys[k] = false;
-      if (e.code === 'Space') game.current.keys.space = false;
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    window.addEventListener('keyup', handleKeyUp);
+    function initControls() {
+      window.addEventListener('keydown', (e) => {
+        const k = e.key.toLowerCase();
+        if (game.keys.hasOwnProperty(k)) game.keys[k] = true;
+        if (e.code === 'ArrowUp') game.keys.w = true;
+        if (e.code === 'ArrowDown') game.keys.s = true;
+        if (e.code === 'ArrowLeft') game.keys.a = true;
+        if (e.code === 'ArrowRight') game.keys.d = true;
+        if (e.code === 'Space') {
+            game.keys.space = true;
+            handleJump();
+        }
+      });
+      
+      window.addEventListener('keyup', (e) => {
+        const k = e.key.toLowerCase();
+        if (game.keys.hasOwnProperty(k)) game.keys[k] = false;
+        if (e.code === 'ArrowUp') game.keys.w = false;
+        if (e.code === 'ArrowDown') game.keys.s = false;
+        if (e.code === 'ArrowLeft') game.keys.a = false;
+        if (e.code === 'ArrowRight') game.keys.d = false;
+        if (e.code === 'Space') game.keys.space = false;
+      });
 
-    // 5. Physics & Animation Loop
-    let animationId;
-    const animate = () => {
-      const g = game.current;
-      if (!g.isPaused) {
-        const { player, joy, keys, speedM, gravityM } = g;
+      let touchId = null;
+      const handleTouch = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const r = elements.joystickZone.getBoundingClientRect();
+        const center = { x: r.left + 64, y: r.top + 64 }; 
         
-        // Input processing (Keyboard + Joystick)
+        let touch;
+        for (let i=0; i<e.touches.length; i++) {
+            if (touchId === null || e.touches[i].identifier === touchId) {
+                touch = e.touches[i];
+                touchId = touch.identifier;
+                break;
+            }
+        }
+        if(!touch) return;
+
+        let nx = (touch.clientX - center.x) / 40;
+        let nz = (touch.clientY - center.y) / 40;
+        
+        const distance = Math.sqrt(nx*nx + nz*nz);
+        if(distance > 1) {
+            nx /= distance;
+            nz /= distance;
+        }
+
+        game.joy = { x: nx, z: nz };
+        elements.joystickKnob.style.transform = `translate(${nx * 30}px, ${nz * 30}px)`;
+      };
+
+      elements.joystickZone.addEventListener('touchstart', handleTouch, {passive: false});
+      elements.joystickZone.addEventListener('touchmove', handleTouch, {passive: false});
+      
+      const handleTouchEnd = (e) => {
+        e.preventDefault();
+        let stillTouching = false;
+        for(let i=0; i<e.touches.length; i++){
+            if(e.touches[i].identifier === touchId) stillTouching = true;
+        }
+        
+        if (!stillTouching) {
+            touchId = null;
+            game.joy = { x: 0, z: 0 };
+            elements.joystickKnob.style.transform = `translate(0px, 0px)`;
+        }
+      };
+
+      elements.joystickZone.addEventListener('touchend', handleTouchEnd);
+      elements.joystickZone.addEventListener('touchcancel', handleTouchEnd);
+    }
+
+    function animate() {
+      if (!game.isPaused && game.scene) {
+        const { player, joy, keys, speedM, gravityM } = game;
+        
         let dx = joy.x;
         let dz = joy.z;
         if (keys.w) dz -= 1;
@@ -191,236 +525,138 @@ const App = () => {
         if (keys.a) dx -= 1;
         if (keys.d) dx += 1;
 
-        // Normalize vector to prevent diagonal speed boost
         const length = Math.sqrt(dx * dx + dz * dz);
         if (length > 1) { dx /= length; dz /= length; }
 
-        const moveX = dx * 0.22 * speedM;
-        const moveZ = dz * 0.22 * speedM;
+        const theta = game.camAngle.theta;
+        const realDx = dx * Math.cos(theta) + dz * Math.sin(theta);
+        const realDz = -dx * Math.sin(theta) + dz * Math.cos(theta);
+
+        const moveX = realDx * 0.22 * speedM;
+        const moveZ = realDz * 0.22 * speedM;
         
         player.group.position.x += moveX;
         player.group.position.z += moveZ;
 
-        // Vertical Movement (Gravity)
-        g.vY -= 0.018 * gravityM;
-        player.group.position.y += g.vY;
+        game.vY -= 0.018 * gravityM;
+        player.group.position.y += game.vY;
 
-        // Collision Detection
         let hasLanded = false;
         const pPos = player.group.position;
         const radius = 0.4;
 
-        // Check platforms and finish line
-        const allPlatforms = [...g.platforms, g.finishLine];
-        
+        const allPlatforms = [...game.platforms, game.finishLine];
         for (const p of allPlatforms) {
           if (pPos.x > p.x - p.w/2 - radius && pPos.x < p.x + p.w/2 + radius &&
               pPos.z > p.z - p.d/2 - radius && pPos.z < p.z + p.d/2 + radius) {
-            
-            // Snap to surface if falling through it
-            if (g.vY <= 0 && pPos.y >= p.y - 0.2 && pPos.y <= p.y + 0.6) {
+            if (game.vY <= 0 && pPos.y >= p.y - 0.2 && pPos.y <= p.y + 0.6) {
               pPos.y = p.y;
-              g.vY = 0;
+              game.vY = 0;
               hasLanded = true;
               break;
             }
           }
         }
 
-        g.onGround = hasLanded;
-        if (hasLanded) g.jumpCount = 0;
+        game.onGround = hasLanded;
+        if (hasLanded) game.jumpCount = 0;
 
-        // Animations (Walking/Jumping)
         const isMoving = Math.abs(dx) > 0.05 || Math.abs(dz) > 0.05;
         if (isMoving) {
-          player.group.rotation.y = Math.atan2(dx, dz);
-          if (g.onGround) {
-            g.walkCycle += 0.25;
-            const wave = Math.sin(g.walkCycle) * 0.8;
+          player.group.rotation.y = Math.atan2(realDx, realDz);
+          if (game.onGround) {
+            game.walkCycle += 0.25;
+            const wave = Math.sin(game.walkCycle) * 0.8;
             player.lArm.rotation.x = wave; player.rArm.rotation.x = -wave;
             player.lLeg.rotation.x = -wave; player.rLeg.rotation.x = wave;
           }
+
+          if (!game.isDraggingCamera) {
+            let camTarget = player.group.rotation.y + Math.PI;
+            let diff = (camTarget - game.camAngle.theta) % (Math.PI * 2);
+            if (diff > Math.PI) diff -= Math.PI * 2;
+            if (diff < -Math.PI) diff += Math.PI * 2;
+            game.camAngle.theta += diff * 0.04; 
+          }
         } else {
-          // Reset limbs when standing still
           player.lArm.rotation.x = THREE.MathUtils.lerp(player.lArm.rotation.x, 0, 0.2);
           player.rArm.rotation.x = THREE.MathUtils.lerp(player.rArm.rotation.x, 0, 0.2);
           player.lLeg.rotation.x = THREE.MathUtils.lerp(player.lLeg.rotation.x, 0, 0.2);
           player.rLeg.rotation.x = THREE.MathUtils.lerp(player.rLeg.rotation.x, 0, 0.2);
         }
 
-        if (!g.onGround) {
-          // Jump Pose
-          player.lArm.rotation.x = 0.5; player.rArm.rotation.x = 0.5;
-          player.lLeg.rotation.x = -0.2; player.rLeg.rotation.x = 0.2;
-        }
-
-        // Death/Respawn
-        if (pPos.y < -20) {
-          pPos.copy(g.checkpoint);
-          g.vY = 0;
+        // --- 떨어졌을 때 리스폰 ---
+        if (pPos.y < -25) {
+          pPos.copy(game.checkpoint);
+          game.vY = 0;
+          game.coins.forEach(c => {
+            c.mesh.userData.collected = false;
+            c.mesh.visible = true;
+          });
           showMessage("You fell! Respawning...");
         }
 
-        // Win Condition
-        if (pPos.distanceTo(new THREE.Vector3(g.finishLine.x, pPos.y, g.finishLine.z)) < 8) {
-           pPos.copy(g.checkpoint);
-           g.vY = 0;
-           setStats(s => ({ ...s, gold: s.gold + 500, level: s.level + 1 }));
-           showMessage("🎉 Course Completed! +500 Gold! 🎉");
+        // --- 승리 조건 로직 (레벨 진행 및 엔딩) ---
+        if (pPos.distanceTo(new THREE.Vector3(game.finishLine.x, pPos.y, game.finishLine.z)) < 8) {
+           pPos.copy(game.checkpoint);
+           game.vY = 0;
+           stats.gold += 500;
+           
+           if (stats.level < 7) {
+               // 다음 레벨로 진행
+               stats.level += 1;
+               updateStatsUI();
+               
+               // 맵 다시 그리기
+               buildMap(game.scene);
+               
+               // 카메라 및 플레이어 방향 초기화
+               game.player.group.rotation.y = 0;
+               game.camAngle.theta = 0;
+               game.camAngle.phi = 0.4;
+               
+               showMessage(`🎉 Level ${stats.level} Started! +500 Gold! 🎉`);
+           } else {
+               // 7레벨 통과 시 게임 클리어 엔딩 처리
+               updateStatsUI();
+               game.isPaused = true;
+               elements.clearModal.classList.remove('hidden');
+           }
         }
 
-        // Coin Collection
-        for (let i = g.coins.length - 1; i >= 0; i--) {
-          const c = g.coins[i];
-          c.mesh.rotation.z += 0.05; // Spin animation
-          if (pPos.distanceTo(c.mesh.position) < 1.8) {
-            g.scene.remove(c.mesh);
-            g.coins.splice(i, 1);
-            setStats(s => ({ ...s, gold: s.gold + 25 }));
+        // --- 코인 획득 로직 ---
+        for (let i = game.coins.length - 1; i >= 0; i--) {
+          const c = game.coins[i];
+          c.mesh.rotation.z += 0.05; 
+          if (!c.mesh.userData.collected && pPos.distanceTo(c.mesh.position) < 1.8) {
+            c.mesh.userData.collected = true; 
+            c.mesh.visible = false; 
+            stats.gold += 25;
+            updateStatsUI();
           }
         }
 
-        // Camera Follow
-        const targetCamPos = new THREE.Vector3(pPos.x, pPos.y + 7, pPos.z + 14);
-        g.camera.position.lerp(targetCamPos, 0.1);
-        g.camera.lookAt(pPos.x, pPos.y + 1, pPos.z);
+        const camTheta = game.camAngle.theta;
+        const camPhi = game.camAngle.phi;
+        const camRadius = game.camRadius;
+        
+        const camDistH = camRadius * Math.cos(camPhi); 
+        const camDistV = camRadius * Math.sin(camPhi); 
+
+        const targetCamPos = new THREE.Vector3(
+          pPos.x + camDistH * Math.sin(camTheta),
+          pPos.y + camDistV + 1.5,
+          pPos.z + camDistH * Math.cos(camTheta)
+        );
+
+        game.camera.position.lerp(targetCamPos, 0.2);
+        game.camera.lookAt(pPos.x, pPos.y + 1.5, pPos.z);
+        
+        game.renderer.render(game.scene, game.camera);
       }
       
-      g.renderer.render(g.scene, g.camera);
       animationId = requestAnimationFrame(animate);
-    };
-
-    animate();
-
-    return () => {
-      window.removeEventListener('keydown', handleKeyDown);
-      window.removeEventListener('keyup', handleKeyUp);
-      cancelAnimationFrame(animationId);
-      mountRef.current?.removeChild(renderer.domElement);
-    };
-  }, [handleJump]);
-
-  return (
-    <div className="relative w-full h-screen bg-black overflow-hidden touch-none select-none">
-      <div ref={mountRef} className="absolute inset-0" />
-
-      {/* Top HUD */}
-      <div className="absolute top-6 left-6 right-6 flex justify-between items-start pointer-events-none">
-        <div className="flex gap-4">
-          <div className="bg-black/60 backdrop-blur-md border-2 border-yellow-400 px-4 py-2 rounded-2xl text-white font-black flex items-center gap-3 pointer-events-auto shadow-lg">
-            <span className="text-2xl drop-shadow-md">💰</span> 
-            <span className="text-xl">{stats.gold}</span>
-          </div>
-          <div className="bg-black/60 backdrop-blur-md border-2 border-green-400 px-4 py-2 rounded-2xl text-white font-black flex items-center gap-3 pointer-events-auto shadow-lg">
-            <span className="text-green-400">LVL</span> 
-            <span className="text-xl">{stats.level}</span>
-          </div>
-        </div>
-      </div>
-
-      {/* Center Game Message Overlay */}
-      {gameMsg && (
-        <div className="absolute top-24 left-1/2 -translate-x-1/2 bg-black/70 text-white px-6 py-3 rounded-full font-bold text-lg animate-bounce pointer-events-none text-center shadow-xl border border-white/20">
-          {gameMsg}
-        </div>
-      )}
-
-      {/* Side Buttons */}
-      <div className="absolute left-6 top-1/2 -translate-y-1/2 flex flex-col gap-4 pointer-events-auto">
-        <button 
-          onClick={() => setModal('shop')} 
-          className="w-16 h-16 sm:w-20 sm:h-20 bg-gradient-to-b from-yellow-400 to-yellow-600 rounded-3xl shadow-xl flex flex-col items-center justify-center text-white font-black active:scale-90 transition-transform border-b-4 border-yellow-700"
-        >
-          <span className="text-2xl sm:text-3xl">🛒</span>
-          <span className="text-[10px] sm:text-xs">SHOP</span>
-        </button>
-      </div>
-
-      {/* Mobile Controls (Hidden on Desktop, Visible on Touch) */}
-      <div className="sm:hidden">
-        {/* Joystick */}
-        <div 
-          className="absolute bottom-12 left-8 w-32 h-32 bg-white/10 backdrop-blur-sm rounded-full border-4 border-white/30 flex items-center justify-center pointer-events-auto shadow-[0_0_30px_rgba(0,0,0,0.3)]"
-          onTouchStart={(e) => {
-             const r = e.currentTarget.getBoundingClientRect();
-             const t = e.touches[0];
-             game.current.joy = { 
-               x: Math.max(-1, Math.min(1, (t.clientX - (r.left + 64)) / 40)), 
-               z: Math.max(-1, Math.min(1, (t.clientY - (r.top + 64)) / 40)) 
-             };
-          }}
-          onTouchMove={(e) => {
-            const r = e.currentTarget.getBoundingClientRect();
-            const t = e.touches[0];
-            game.current.joy = { 
-              x: Math.max(-1, Math.min(1, (t.clientX - (r.left + 64)) / 40)), 
-              z: Math.max(-1, Math.min(1, (t.clientY - (r.top + 64)) / 40)) 
-            };
-          }}
-          onTouchEnd={() => game.current.joy = { x: 0, z: 0 }}
-        >
-          <div className="w-14 h-14 bg-white/80 rounded-full shadow-inner" />
-        </div>
-
-        {/* Jump Button */}
-        <button 
-          onPointerDown={handleJump} 
-          className="absolute bottom-12 right-8 w-24 h-24 bg-white/20 backdrop-blur-sm border-4 border-white/50 rounded-full text-white font-black text-xl active:scale-75 transition-transform pointer-events-auto shadow-[0_0_30px_rgba(0,0,0,0.3)] flex items-center justify-center"
-        >
-          JUMP
-        </button>
-      </div>
-
-      {/* Shop Modal */}
-      {modal === 'shop' && (
-        <div className="absolute inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center p-4 z-50">
-          <div className="bg-slate-900 rounded-[40px] w-full max-w-md p-8 shadow-2xl border border-slate-700">
-            <div className="flex justify-between items-center mb-6">
-              <h2 className="text-3xl font-black text-white">🛒 Upgrade Shop</h2>
-              <button onClick={() => setModal(null)} className="text-4xl text-slate-400 hover:text-white transition-colors">×</button>
-            </div>
-            
-            <div className="space-y-4">
-              {[
-                { id: 'double', name: "Double Jump", desc: "Jump one more time in mid-air!", cost: 50, icon: "👟", effect: () => { game.current.maxJumps = 2; showMessage("Double Jump Unlocked!"); } },
-                { id: 'speed', name: "Speed Coil", desc: "Run 50% faster!", cost: 150, icon: "⚡", effect: () => { game.current.speedM = 1.5; showMessage("Speed Coil Equipped!"); } },
-                { id: 'gravity', name: "Moon Gravity", desc: "Float like a feather", cost: 300, icon: "🌑", effect: () => { game.current.gravityM = 0.5; game.current.jumpM = 0.8; showMessage("Moon Gravity Enabled!"); } },
-              ].map(item => {
-                const isOwned = ownedItems.includes(item.id);
-                const canAfford = stats.gold >= item.cost;
-                
-                return (
-                  <div key={item.id} className="flex justify-between items-center bg-slate-800 p-4 rounded-3xl border border-slate-700">
-                    <div className="flex gap-4 items-center">
-                      <span className="text-4xl bg-slate-700 p-2 rounded-2xl">{item.icon}</span>
-                      <div>
-                        <p className="font-black text-white text-lg">{item.name}</p>
-                        <p className="text-xs text-slate-400 mt-1">{item.desc}</p>
-                      </div>
-                    </div>
-                    <button 
-                      disabled={isOwned || !canAfford}
-                      onClick={() => {
-                          setStats(s => ({...s, gold: s.gold - item.cost}));
-                          setOwnedItems(p => [...p, item.id]);
-                          item.effect();
-                      }}
-                      className={`
-                        ${isOwned ? 'bg-green-500 text-white' : canAfford ? 'bg-yellow-500 hover:bg-yellow-400 text-slate-900' : 'bg-slate-700 text-slate-500'} 
-                        font-black px-4 py-3 rounded-xl transition-colors shadow-lg
-                      `}
-                    >
-                      {isOwned ? 'OWNED' : `💰 ${item.cost}`}
-                    </button>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-};
-
-export default App;
+    }
+  </script>
+</body>
+</html>
