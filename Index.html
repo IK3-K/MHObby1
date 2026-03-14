@@ -1,662 +1,559 @@
 <!DOCTYPE html>
-<html lang="ko">
+<html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Roblox Obby Adventure</title>
-  <script src="https://cdn.tailwindcss.com"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-  <style>
-    body { margin: 0; overflow: hidden; background-color: #000; touch-action: none; user-select: none; }
-    canvas { display: block; }
-    ::-webkit-scrollbar { width: 8px; }
-    ::-webkit-scrollbar-track { background: transparent; }
-    ::-webkit-scrollbar-thumb { background: #475569; border-radius: 4px; }
-  </style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Roblox Obby - Advanced Bank System</title>
+    <style>
+        :root { --gold: #ffd700; --robux: #00e5ff; --secret: #bf40bf; --bank: #1abc9c; --bg: rgba(0, 0, 0, 0.9); }
+        body { margin: 0; overflow: hidden; background-color: #000; touch-action: none; font-family: 'Segoe UI', sans-serif; user-select: none; }
+        
+        #ui-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 100; }
+        #stats-bar { position: absolute; top: 10px; right: 10px; display: flex; flex-direction: column; gap: 5px; pointer-events: none; }
+        .stat-card { background: var(--bg); padding: 8px 15px; border-radius: 12px; border: 2px solid white; color: white; font-weight: bold; min-width: 100px; display: flex; justify-content: space-between; pointer-events: auto; font-size: 14px; }
+        #level-indicator { position: absolute; top: 10px; left: 10px; background: rgba(0,0,0,0.8); color: #fff; padding: 8px 15px; border-radius: 15px; border: 2px solid var(--robux); font-weight: bold; font-size: 14px; pointer-events: auto; }
+        
+        #side-nav { position: absolute; left: 10px; top: 70px; display: flex; flex-direction: column; gap: 8px; pointer-events: auto; }
+        .nav-item { width: 65px; height: 65px; background: var(--bg); border: 2px solid #fff; border-radius: 15px; display: flex; flex-direction: column; align-items: center; justify-content: center; color: #fff; cursor: pointer; transition: 0.1s; }
+        .nav-item span { font-size: 10px; margin-top: 2px; font-weight: bold; text-align: center; line-height: 1.1; }
+
+        /* Modal System */
+        .modal-overlay { position: absolute; inset: 0; background: rgba(0,0,0,0.85); display: none; align-items: center; justify-content: center; z-index: 2000; pointer-events: auto; padding: 20px; box-sizing: border-box; }
+        .modal-box { background: #fff; width: 100%; max-width: 420px; max-height: 85vh; border-radius: 20px; padding: 20px; color: #333; position: relative; display: flex; flex-direction: column; box-shadow: 0 10px 30px rgba(0,0,0,0.5); overflow: hidden; }
+        .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; flex-shrink: 0; }
+        .close-btn { font-size: 28px; cursor: pointer; color: #999; padding: 0 10px; }
+        
+        .modal-content { flex-grow: 1; overflow-y: auto; padding-right: 10px; }
+        .modal-content::-webkit-scrollbar { width: 6px; }
+        .modal-content::-webkit-scrollbar-thumb { background: #ccc; border-radius: 10px; }
+
+        /* Bank Styles */
+        .bank-option { background: #f0f0f0; border: 2px solid #ddd; border-radius: 12px; padding: 15px; margin-bottom: 10px; cursor: pointer; text-align: center; transition: 0.2s; }
+        .bank-option:active { transform: scale(0.98); }
+        .bank-option.active { border-color: var(--bank); background: #e8f8f5; }
+        .exchange-input-area { margin-top: 15px; display: none; flex-direction: column; gap: 10px; }
+        .exchange-input { width: 100%; padding: 12px; border: 1px solid #ccc; border-radius: 10px; font-size: 16px; box-sizing: border-box; }
+
+        .item-list { display: flex; flex-direction: column; gap: 8px; }
+        .shop-item { background: #f8f9fa; padding: 12px; border-radius: 12px; display: flex; justify-content: space-between; align-items: center; border: 1px solid #eee; }
+        .item-info { flex: 1; padding-right: 10px; }
+        .item-info b { font-size: 14px; display: block; }
+        .item-info small { color: #666; font-size: 11px; }
+        .buy-btn { border: none; padding: 8px 10px; border-radius: 10px; font-weight: bold; cursor: pointer; color: white; min-width: 65px; font-size: 12px; flex-shrink: 0; }
+
+        .inj-input { width: 100%; padding: 12px; margin-bottom: 12px; border: 1px solid #ddd; border-radius: 10px; box-sizing: border-box; font-size: 16px; }
+
+        /* Mobile Controls - Hidden on Desktop by default */
+        #joy-base { 
+            position: absolute; bottom: 30px; left: 30px; width: 100px; height: 100px; 
+            background: rgba(255,255,255,0.1); border-radius: 50%; border: 2px solid rgba(255,255,255,0.2); 
+            pointer-events: auto; display: none; 
+        }
+        #joy-knob { position: absolute; width: 50px; height: 50px; background: #fff; border-radius: 50%; left: 25px; top: 25px; }
+        #jump-btn { 
+            position: absolute; bottom: 30px; right: 30px; width: 85px; height: 85px; 
+            background: rgba(255,255,255,0.2); border: 4px solid #fff; border-radius: 50%; 
+            display: none; align-items: center; justify-content: center; color: #fff; 
+            font-weight: bold; pointer-events: auto; font-size: 18px; 
+        }
+
+        /* Show controls only on devices with touch capabilities (coarse pointer) */
+        @media (pointer: coarse) {
+            #joy-base { display: block; }
+            #jump-btn { display: flex; }
+        }
+
+        #toast { position: absolute; top: 15%; left: 50%; transform: translate(-50%, -50%); background: rgba(0,0,0,0.85); color: #fff; padding: 12px 25px; border-radius: 50px; opacity: 0; transition: 0.3s; pointer-events: none; z-index: 5000; font-weight: bold; border: 2px solid #fff; text-align: center; font-size: 14px; }
+        
+        #camera-touch-area { position: absolute; inset: 0; pointer-events: auto; z-index: 50; }
+    </style>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 </head>
 <body>
 
-  <!-- 3D 렌더링 컨테이너 -->
-  <div id="game-container" class="absolute inset-0"></div>
+    <div id="camera-touch-area"></div>
 
-  <!-- 게임 타이틀 -->
-  <div class="absolute top-4 left-1/2 -translate-x-1/2 pointer-events-none z-10 w-full text-center">
-    <h1 class="text-3xl sm:text-4xl md:text-5xl font-black text-white tracking-wider drop-shadow-xl" style="text-shadow: 3px 3px 0 #000, -2px -2px 0 #000, 2px -2px 0 #000, -2px 2px 0 #000, 2px 2px 0 #000;">
-      Minho Obby Game
-    </h1>
-  </div>
-
-  <!-- 상단 HUD -->
-  <div class="absolute top-16 sm:top-6 left-6 right-6 flex justify-between items-start pointer-events-none z-10">
-    <div class="flex gap-4">
-      <div class="bg-black/60 backdrop-blur-md border-2 border-yellow-400 px-4 py-2 rounded-2xl text-white font-black flex items-center gap-3 pointer-events-auto shadow-lg">
-        <span class="text-2xl drop-shadow-md">💰</span> 
-        <span id="gold-display" class="text-xl">0</span>
-      </div>
-      <div class="bg-black/60 backdrop-blur-md border-2 border-green-400 px-4 py-2 rounded-2xl text-white font-black flex items-center gap-3 pointer-events-auto shadow-lg">
-        <span class="text-green-400">LEVEL</span> 
-        <span id="level-display" class="text-xl">1</span>
-        <span class="text-green-400 text-xs ml-1">/ 7</span>
-      </div>
-    </div>
-  </div>
-
-  <!-- 게임 메시지 오버레이 -->
-  <div id="msg-overlay" class="absolute top-24 left-1/2 -translate-x-1/2 bg-black/70 text-white px-6 py-3 rounded-full font-bold text-lg animate-bounce pointer-events-none text-center shadow-xl border border-white/20 z-10 transition-opacity duration-300">
-    Use WASD/Arrows/Joystick to move, SPACE to jump!
-  </div>
-
-  <!-- 사이드 버튼 (상점) -->
-  <div class="absolute left-6 top-1/2 -translate-y-1/2 flex flex-col gap-4 pointer-events-auto z-10">
-    <button id="shop-btn" class="w-16 h-16 sm:w-20 sm:h-20 bg-gradient-to-b from-yellow-400 to-yellow-600 rounded-3xl shadow-xl flex flex-col items-center justify-center text-white font-black active:scale-90 transition-transform border-b-4 border-yellow-700">
-      <span class="text-2xl sm:text-3xl">🛒</span>
-      <span class="text-[10px] sm:text-xs">SHOP</span>
-    </button>
-  </div>
-
-  <!-- 모바일 컨트롤 (데스크탑에서는 숨김) -->
-  <div class="sm:hidden z-10">
-    <!-- 조이스틱 -->
-    <div id="joystick-zone" class="absolute bottom-12 left-8 w-32 h-32 bg-white/10 backdrop-blur-sm rounded-full border-4 border-white/30 flex items-center justify-center pointer-events-auto shadow-[0_0_30px_rgba(0,0,0,0.3)]">
-      <div id="joystick-knob" class="w-14 h-14 bg-white/80 rounded-full shadow-inner transition-transform duration-75"></div>
+    <div id="ui-layer">
+        <div id="level-indicator">Level: <span id="cur-lvl">1</span> / 8</div>
+        <div id="stats-bar">
+            <div class="stat-card" style="border-color:var(--gold);">💰 <span id="val-gold">0</span></div>
+            <div class="stat-card" style="border-color:var(--robux);">💎 <span id="val-robux">0</span></div>
+        </div>
+        <div id="side-nav">
+            <div class="nav-item" style="border-color:var(--gold); color:var(--gold);" onclick="openShop('gold')">🛒<span>Gold<br>Shop</span></div>
+            <div class="nav-item" style="border-color:var(--robux); color:var(--robux);" onclick="openShop('robux')">👑<span>R$<br>Shop</span></div>
+            <div class="nav-item" style="border-color:var(--bank); color:var(--bank);" onclick="openBank()">🏦<span>Bank<br>Exchange</span></div>
+            <div class="nav-item" style="border-color:var(--secret); color:var(--secret);" onclick="openModal('secret-modal')">⚡<span>Admin<br>Panel</span></div>
+        </div>
+        <div id="joy-base"><div id="joy-knob"></div></div>
+        <div id="jump-btn">JUMP</div>
+        <div id="toast">Alert</div>
     </div>
 
-    <!-- 점프 버튼 -->
-    <button id="jump-btn" class="absolute bottom-12 right-8 w-24 h-24 bg-white/20 backdrop-blur-sm border-4 border-white/50 rounded-full text-white font-black text-xl active:scale-75 transition-transform pointer-events-auto shadow-[0_0_30px_rgba(0,0,0,0.3)] flex items-center justify-center">
-      JUMP
-    </button>
-  </div>
+    <!-- Bank Modal -->
+    <div id="bank-modal" class="modal-overlay">
+        <div class="modal-box">
+            <div class="modal-header"><h2>🏦 Bank System</h2><span class="close-btn" onclick="closeModals()">×</span></div>
+            <div class="modal-content">
+                <p style="text-align:center; margin-bottom:15px; color:#666;">Rate: 5 Gold ↔ 1 R$</p>
+                
+                <div id="opt-g2r" class="bank-option" onclick="selectBankMode('G2R')">
+                    <b>💰 Gold ➔ 💎 R$</b><br><small>Cost 5 Gold for 1 R$</small>
+                </div>
+                
+                <div id="opt-r2g" class="bank-option" onclick="selectBankMode('R2G')">
+                    <b>💎 R$ ➔ 💰 Gold</b><br><small>Cost 1 R$ for 5 Gold</small>
+                </div>
 
-  <!-- 상점 모달 -->
-  <div id="shop-modal" class="hidden absolute inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center p-4 z-50">
-    <div class="bg-slate-900 rounded-[40px] w-full max-w-md p-8 shadow-2xl border border-slate-700 flex flex-col max-h-[90vh]">
-      <div class="flex justify-between items-center mb-6 shrink-0">
-        <h2 class="text-3xl font-black text-white">🛒 Upgrade Shop</h2>
-        <button id="close-shop-btn" class="text-4xl text-slate-400 hover:text-white transition-colors">&times;</button>
-      </div>
-      
-      <div id="shop-items-container" class="space-y-4 overflow-y-auto pr-2 pb-2">
-        <!-- 상점 아이템들이 여기에 JS로 생성됩니다 -->
-      </div>
-    </div>
-  </div>
-
-  <!-- 게임 클리어 모달 -->
-  <div id="clear-modal" class="hidden absolute inset-0 bg-black/90 backdrop-blur-md flex items-center justify-center p-4 z-50">
-    <div class="bg-slate-900 rounded-[40px] w-full max-w-md p-8 shadow-2xl border-4 border-yellow-500 flex flex-col items-center text-center">
-      <h2 class="text-4xl font-black text-yellow-400 mb-2">🏆 GAME CLEARED!</h2>
-      <p class="text-slate-300 text-lg mb-8">Congratulations! You conquered Level 7 of Minho Obby Game!</p>
-      <button id="restart-btn" class="w-full bg-gradient-to-r from-yellow-400 to-yellow-600 hover:from-yellow-300 hover:to-yellow-500 text-slate-900 font-black text-xl px-6 py-4 rounded-2xl shadow-lg transition-transform active:scale-95">
-        PLAY AGAIN
-      </button>
-    </div>
-  </div>
-
-  <script>
-    // --- 게임 상태 및 데이터 ---
-    const stats = { gold: 0, level: 1 };
-    let ownedItems = [];
-    let msgTimeout = null;
-    let animationId = null;
-
-    const game = {
-      scene: null, camera: null, renderer: null,
-      player: { group: null, lArm: null, rArm: null, lLeg: null, rLeg: null },
-      platforms: [], coins: [], mapMeshes: [], finishLine: null,
-      vY: 0, onGround: false, jumpCount: 0, maxJumps: 1,
-      joy: { x: 0, z: 0 },
-      keys: { w: false, a: false, s: false, d: false, space: false },
-      speedM: 1, jumpM: 1, gravityM: 1, walkCycle: 0, isPaused: false,
-      checkpoint: new THREE.Vector3(0, 5, 0),
-      camAngle: { theta: 0, phi: 0.4 }, 
-      camRadius: 15,
-      isDraggingCamera: false
-    };
-
-    const shopItems = [
-      { id: 'double', name: "Double Jump", desc: "Jump one more time in mid-air!", cost: 50, icon: "👟", effect: () => { game.maxJumps = 2; showMessage("Double Jump Unlocked!"); } },
-      { id: 'speed', name: "Speed Coil", desc: "Run 50% faster!", cost: 150, icon: "⚡", effect: () => { game.speedM = 1.5; showMessage("Speed Coil Equipped!"); } },
-      { id: 'gravity', name: "Moon Gravity", desc: "Float like a feather.", cost: 300, icon: "🌑", effect: () => { game.gravityM = 0.5; game.jumpM = 0.8; showMessage("Moon Gravity Enabled!"); } },
-    ];
-
-    // --- UI 업데이트 함수 ---
-    const elements = {
-      goldDisplay: document.getElementById('gold-display'),
-      levelDisplay: document.getElementById('level-display'),
-      msgOverlay: document.getElementById('msg-overlay'),
-      shopModal: document.getElementById('shop-modal'),
-      clearModal: document.getElementById('clear-modal'),
-      restartBtn: document.getElementById('restart-btn'),
-      shopItemsContainer: document.getElementById('shop-items-container'),
-      shopBtn: document.getElementById('shop-btn'),
-      closeShopBtn: document.getElementById('close-shop-btn'),
-      joystickZone: document.getElementById('joystick-zone'),
-      joystickKnob: document.getElementById('joystick-knob'),
-      jumpBtn: document.getElementById('jump-btn'),
-      gameContainer: document.getElementById('game-container')
-    };
-
-    function updateStatsUI() {
-      elements.goldDisplay.innerText = stats.gold;
-      elements.levelDisplay.innerText = stats.level;
-      renderShopItems();
-    }
-
-    function showMessage(msg) {
-      elements.msgOverlay.innerText = msg;
-      elements.msgOverlay.classList.remove('opacity-0');
-      
-      if (msgTimeout) clearTimeout(msgTimeout);
-      msgTimeout = setTimeout(() => {
-        elements.msgOverlay.classList.add('opacity-0');
-      }, 4000);
-    }
-
-    setTimeout(() => { elements.msgOverlay.classList.add('opacity-0'); }, 4000);
-
-    // --- 상점 & 모달 로직 ---
-    elements.shopBtn.addEventListener('click', () => { elements.shopModal.classList.remove('hidden'); });
-    elements.closeShopBtn.addEventListener('click', () => { elements.shopModal.classList.add('hidden'); });
-
-    elements.restartBtn.addEventListener('click', () => {
-      elements.clearModal.classList.add('hidden');
-      stats.level = 1;
-      stats.gold = 0;
-      ownedItems = [];
-      game.maxJumps = 1;
-      game.speedM = 1;
-      game.gravityM = 1;
-      game.jumpM = 1;
-      updateStatsUI();
-      buildMap(game.scene);
-      game.player.group.position.copy(game.checkpoint);
-      game.player.group.rotation.y = 0;
-      game.camAngle.theta = 0;
-      game.camAngle.phi = 0.4;
-      game.vY = 0;
-      game.isPaused = false;
-      showMessage("Game Restarted! Good luck!");
-    });
-
-    function renderShopItems() {
-      elements.shopItemsContainer.innerHTML = '';
-      shopItems.forEach(item => {
-        const isOwned = ownedItems.includes(item.id);
-        const canAfford = stats.gold >= item.cost;
-        
-        const itemDiv = document.createElement('div');
-        itemDiv.className = 'flex justify-between items-center bg-slate-800 p-4 rounded-3xl border border-slate-700';
-        itemDiv.innerHTML = `
-          <div class="flex gap-4 items-center">
-            <span class="text-4xl bg-slate-700 p-2 rounded-2xl">${item.icon}</span>
-            <div>
-              <p class="font-black text-white text-lg">${item.name}</p>
-              <p class="text-xs text-slate-400 mt-1">${item.desc}</p>
+                <div id="exchange-ui" class="exchange-input-area">
+                    <label id="exchange-label" style="font-weight:bold;"></label>
+                    <input type="number" id="exchange-amount" class="exchange-input" placeholder="Enter amount" min="1">
+                    <button class="buy-btn" style="width:100%; padding:15px; background:var(--bank); font-size:18px;" onclick="confirmExchange()">Confirm Exchange</button>
+                </div>
             </div>
-          </div>
-          <button id="buy-${item.id}" class="font-black px-4 py-3 rounded-xl transition-colors shadow-lg
-            ${isOwned ? 'bg-green-500 text-white' : canAfford ? 'bg-yellow-500 hover:bg-yellow-400 text-slate-900 cursor-pointer' : 'bg-slate-700 text-slate-500 cursor-not-allowed'}">
-            ${isOwned ? 'OWNED' : `💰 ${item.cost}`}
-          </button>
-        `;
+        </div>
+    </div>
+
+    <!-- Admin Panel Modal -->
+    <div id="secret-modal" class="modal-overlay">
+        <div class="modal-box">
+            <div class="modal-header"><h2>⚡ Admin Panel</h2><span class="close-btn" onclick="closeModals()">×</span></div>
+            <div class="modal-content">
+                <input type="number" id="inj-amt" class="inj-input" placeholder="Amount to inject">
+                <input type="password" id="inj-code" class="inj-input" placeholder="Enter admin code">
+                <div style="display:flex; gap:10px; margin-top:10px;">
+                    <button style="flex:1; padding:15px; background:var(--gold); color:white; border:none; border-radius:10px; font-weight:bold;" onclick="doInject('gold')">Inject Gold</button>
+                    <button style="flex:1; padding:15px; background:var(--robux); color:white; border:none; border-radius:10px; font-weight:bold;" onclick="doInject('robux')">Inject R$</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Shop Modal -->
+    <div id="shop-modal" class="modal-overlay">
+        <div class="modal-box">
+            <div class="modal-header"><h2 id="shop-title">Shop</h2><span class="close-btn" onclick="closeModals()">×</span></div>
+            <div class="modal-content">
+                <div id="shop-items-container" class="item-list"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let scene, camera, renderer, player;
+        let platforms = [], coins = [], lasers = [];
+        let wallet = 0, robux = 0, currentLevel = 1, paused = false;
+        let vY = 0, onGround = false, joyX = 0, joyZ = 0;
+        let speedM = 1, jumpM = 1, gravityM = 1;
+        let itemCounts = {}; 
         
-        elements.shopItemsContainer.appendChild(itemDiv);
+        let camPhi = Math.PI / 4; 
+        let camTheta = 0;        
+        let touchStartPos = { x: 0, y: 0 };
+        const SECRET_CODE = "9981";
 
-        const buyBtn = itemDiv.querySelector(`#buy-${item.id}`);
-        buyBtn.addEventListener('click', () => {
-          if (!isOwned && canAfford) {
-            stats.gold -= item.cost;
-            ownedItems.push(item.id);
-            item.effect();
-            updateStatsUI();
-          }
-        });
-      });
-    }
-    renderShopItems();
+        let keys = { w: false, a: false, s: false, d: false };
+        let bankMode = ""; 
 
-    // --- 점프 로직 ---
-    function handleJump() {
-      if (game.onGround || game.jumpCount < game.maxJumps) {
-        game.vY = 0.38 * game.jumpM;
-        game.jumpCount++;
-        game.onGround = false;
-      }
-    }
-    elements.jumpBtn.addEventListener('pointerdown', (e) => {
-        e.preventDefault(); 
-        e.stopPropagation(); 
-        handleJump();
-    });
-
-    // --- 3D 게임 초기화 ---
-    window.onload = function() {
-      initThreeJS();
-      initControls();
-      initCameraControls();
-      animate();
-    };
-
-    function initCameraControls() {
-      let isDragging = false;
-      let previousPosition = { x: 0, y: 0 };
-      let activeTouchId = null;
-
-      elements.gameContainer.style.cursor = 'grab';
-
-      const startDrag = (e, x, y) => {
-        if (e.target.closest('#shop-modal') || e.target.closest('#clear-modal') || e.target.closest('button') || e.target.closest('.pointer-events-auto') || e.target.closest('#joystick-zone')) return;
-        isDragging = true;
-        game.isDraggingCamera = true;
-        previousPosition = { x, y };
-        elements.gameContainer.style.cursor = 'grabbing';
-      };
-
-      const doDrag = (x, y) => {
-        if (!isDragging) return;
-        const deltaX = x - previousPosition.x;
-        const deltaY = y - previousPosition.y;
-        previousPosition = { x, y };
-        game.camAngle.theta -= deltaX * 0.006;
-        game.camAngle.phi += deltaY * 0.006;
-        game.camAngle.phi = Math.max(-0.2, Math.min(Math.PI / 2 - 0.1, game.camAngle.phi));
-      };
-
-      const endDrag = () => {
-        isDragging = false;
-        game.isDraggingCamera = false;
-        activeTouchId = null;
-        elements.gameContainer.style.cursor = 'grab';
-      };
-
-      elements.gameContainer.addEventListener('mousedown', (e) => startDrag(e, e.clientX, e.clientY));
-      window.addEventListener('mousemove', (e) => doDrag(e.clientX, e.clientY));
-      window.addEventListener('mouseup', endDrag);
-
-      elements.gameContainer.addEventListener('touchstart', (e) => {
-        if (activeTouchId !== null) return;
-        const touch = e.changedTouches[0];
-        activeTouchId = touch.identifier;
-        startDrag(e, touch.clientX, touch.clientY);
-      }, { passive: false });
-
-      window.addEventListener('touchmove', (e) => {
-        for (let i = 0; i < e.changedTouches.length; i++) {
-          if (e.changedTouches[i].identifier === activeTouchId) {
-            doDrag(e.changedTouches[i].clientX, e.changedTouches[i].clientY);
-          }
+        function updateUI() {
+            document.getElementById('val-gold').innerText = Math.floor(wallet);
+            document.getElementById('val-robux').innerText = Math.floor(robux);
+            document.getElementById('cur-lvl').innerText = currentLevel;
         }
-      }, { passive: false });
 
-      window.addEventListener('touchend', (e) => {
-        for (let i = 0; i < e.changedTouches.length; i++) {
-          if (e.changedTouches[i].identifier === activeTouchId) endDrag();
+        function notify(m) {
+            const t = document.getElementById('toast');
+            t.innerText = m; t.style.opacity = '1';
+            setTimeout(() => t.style.opacity = '0', 2000);
         }
-      });
-      window.addEventListener('touchcancel', (e) => {
-        for (let i = 0; i < e.changedTouches.length; i++) {
-          if (e.changedTouches[i].identifier === activeTouchId) endDrag();
-        }
-      });
-    }
 
-    function initThreeJS() {
-      const scene = new THREE.Scene();
-      scene.background = new THREE.Color(0x80dfff);
-      scene.fog = new THREE.Fog(0x80dfff, 20, 100);
-      game.scene = scene;
-
-      const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-      game.camera = camera;
-
-      const renderer = new THREE.WebGLRenderer({ antialias: true });
-      renderer.setSize(window.innerWidth, window.innerHeight);
-      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-      renderer.shadowMap.enabled = true;
-      elements.gameContainer.appendChild(renderer.domElement);
-      game.renderer = renderer;
-
-      scene.add(new THREE.AmbientLight(0xffffff, 0.6));
-      const sun = new THREE.DirectionalLight(0xffffff, 0.8);
-      sun.position.set(20, 50, 20);
-      sun.castShadow = true;
-      scene.add(sun);
-
-      const pGroup = new THREE.Group();
-      const skinMat = new THREE.MeshLambertMaterial({ color: 0xFFDB00 });
-      const torsoMat = new THREE.MeshLambertMaterial({ color: 0x005BB2 });
-      const legMat = new THREE.MeshLambertMaterial({ color: 0x333333 });
-
-      const torso = new THREE.Mesh(new THREE.BoxGeometry(0.8, 1.1, 0.45), torsoMat);
-      torso.position.y = 1.05;
-      pGroup.add(torso);
-
-      const head = new THREE.Mesh(new THREE.BoxGeometry(0.65, 0.65, 0.65), skinMat);
-      head.position.y = 1.95;
-      pGroup.add(head);
-
-      const createLimb = (x, y, mat, geoW = 0.38, geoH = 1.0) => {
-        const g = new THREE.Group();
-        g.position.set(x, y, 0);
-        const m = new THREE.Mesh(new THREE.BoxGeometry(geoW, geoH, 0.38), mat);
-        m.position.y = -geoH/2;
-        g.add(m);
-        return g;
-      };
-
-      const lArm = createLimb(-0.6, 1.5, skinMat, 0.35, 0.9);
-      const rArm = createLimb(0.6, 1.5, skinMat, 0.35, 0.9);
-      const lLeg = createLimb(-0.22, 0.5, legMat);
-      const rLeg = createLimb(0.22, 0.5, legMat);
-
-      pGroup.add(lArm, rArm, lLeg, rLeg);
-      pGroup.position.copy(game.checkpoint);
-      scene.add(pGroup);
-      game.player = { group: pGroup, lArm, rArm, lLeg, rLeg };
-
-      buildMap(scene);
-
-      window.addEventListener('resize', () => {
-        camera.aspect = window.innerWidth / window.innerHeight;
-        camera.updateProjectionMatrix();
-        renderer.setSize(window.innerWidth, window.innerHeight);
-      });
-    }
-
-    // --- 레벨에 따라 맵 스케일링을 동적으로 처리하는 함수 ---
-    function buildMap(scene) {
-      // 1. 이전 맵 데이터 초기화
-      game.mapMeshes.forEach(mesh => scene.remove(mesh));
-      game.mapMeshes = [];
-      game.platforms = [];
-      game.coins = [];
-
-      // 2. 레벨 기반 난이도 계산 (레벨 1 -> 0.0, 레벨 7 -> 1.0)
-      const progress = Math.min((stats.level - 1) / 6, 1);
-      
-      // 레벨 1: 이전의 레벨 4 수준(10) / 레벨 7: 매우 작음(2)
-      const platformSize = THREE.MathUtils.lerp(10, 2, progress);
-      // 레벨 1: 이전의 레벨 4 수준(-14) / 레벨 7: 풀템이어야 도달 가능한 극한의 거리(-30)
-      const zSpacing = THREE.MathUtils.lerp(-14, -30, progress);
-      // 레벨이 오를수록 좌우(x)와 상하(y) 편차가 심해짐 (시작점 상향)
-      const xSpread = THREE.MathUtils.lerp(3.5, 10, progress);
-      const ySpread = THREE.MathUtils.lerp(1.5, 5, progress);
-
-      const addPlatform = (x, y, z, w, d, color) => {
-        const mesh = new THREE.Mesh(
-          new THREE.BoxGeometry(w, 15, d),
-          new THREE.MeshLambertMaterial({ color })
-        );
-        mesh.position.set(x, y - 7.5, z);
-        scene.add(mesh);
-        game.platforms.push({ x, y, z, w, d });
-        game.mapMeshes.push(mesh);
-      };
-
-      // 시작 영역 (항상 넉넉하게)
-      addPlatform(0, 0, 0, 15, 15, 0x999999);
-
-      // 절차적 장애물 코스 (Obby)
-      for (let i = 1; i <= 30; i++) {
-        const z = i * zSpacing;
-        const x = Math.sin(i * 0.5) * xSpread;
-        const y = Math.sin(i * 0.3) * ySpread;
+        function openModal(id) { paused = true; document.getElementById(id).style.display = 'flex'; }
         
-        // 레벨에 따라 맵의 테마 색상이 아름답게 변하도록 설정
-        const hue = ((stats.level - 1) * 0.1 + i * 0.02) % 1.0;
-        const color = new THREE.Color().setHSL(hue, 0.8, 0.5);
-        
-        addPlatform(x, y, z, platformSize, platformSize, color);
-
-        // 코인 추가
-        const coin = new THREE.Mesh(
-          new THREE.CylinderGeometry(0.4, 0.4, 0.15, 16),
-          new THREE.MeshPhongMaterial({ color: 0xffd700, shininess: 100 })
-        );
-        coin.position.set(x, y + 1.5, z);
-        coin.rotation.x = Math.PI / 2;
-        coin.userData.collected = false;
-        scene.add(coin);
-        game.coins.push({ mesh: coin, id: i });
-        game.mapMeshes.push(coin);
-      }
-
-      // 결승선
-      const finishZ = 32 * zSpacing;
-      const finishMesh = new THREE.Mesh(
-        new THREE.BoxGeometry(20, 15, 20),
-        new THREE.MeshLambertMaterial({ color: 0xFFD700 })
-      );
-      finishMesh.position.set(0, 0 - 7.5, finishZ);
-      scene.add(finishMesh);
-      game.finishLine = { x: 0, y: 0, z: finishZ, w: 20, d: 20 };
-      game.mapMeshes.push(finishMesh);
-      
-      // 결승선 장식
-      const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.2, 8), new THREE.MeshLambertMaterial({color: 0xffffff}));
-      pole.position.set(0, 4, finishZ);
-      scene.add(pole);
-      game.mapMeshes.push(pole);
-    }
-
-    function initControls() {
-      window.addEventListener('keydown', (e) => {
-        const k = e.key.toLowerCase();
-        if (game.keys.hasOwnProperty(k)) game.keys[k] = true;
-        if (e.code === 'ArrowUp') game.keys.w = true;
-        if (e.code === 'ArrowDown') game.keys.s = true;
-        if (e.code === 'ArrowLeft') game.keys.a = true;
-        if (e.code === 'ArrowRight') game.keys.d = true;
-        if (e.code === 'Space') {
-            game.keys.space = true;
-            handleJump();
+        function closeModals() { 
+            document.querySelectorAll('.modal-overlay').forEach(m=>m.style.display='none'); 
+            paused = false; 
+            bankMode = "";
+            document.getElementById('exchange-ui').style.display = 'none';
+            document.querySelectorAll('.bank-option').forEach(o => o.classList.remove('active'));
         }
-      });
-      
-      window.addEventListener('keyup', (e) => {
-        const k = e.key.toLowerCase();
-        if (game.keys.hasOwnProperty(k)) game.keys[k] = false;
-        if (e.code === 'ArrowUp') game.keys.w = false;
-        if (e.code === 'ArrowDown') game.keys.s = false;
-        if (e.code === 'ArrowLeft') game.keys.a = false;
-        if (e.code === 'ArrowRight') game.keys.d = false;
-        if (e.code === 'Space') game.keys.space = false;
-      });
 
-      let touchId = null;
-      const handleTouch = (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        const r = elements.joystickZone.getBoundingClientRect();
-        const center = { x: r.left + 64, y: r.top + 64 }; 
-        
-        let touch;
-        for (let i=0; i<e.touches.length; i++) {
-            if (touchId === null || e.touches[i].identifier === touchId) {
-                touch = e.touches[i];
-                touchId = touch.identifier;
-                break;
+        function openBank() {
+            openModal('bank-modal');
+        }
+
+        function selectBankMode(mode) {
+            bankMode = mode;
+            document.querySelectorAll('.bank-option').forEach(o => o.classList.remove('active'));
+            document.getElementById(mode === 'G2R' ? 'opt-g2r' : 'opt-r2g').classList.add('active');
+            
+            const ui = document.getElementById('exchange-ui');
+            const label = document.getElementById('exchange-label');
+            const input = document.getElementById('exchange-amount');
+            
+            ui.style.display = 'flex';
+            input.value = "";
+            label.innerText = mode === 'G2R' ? "Gold to exchange:" : "R$ to exchange:";
+        }
+
+        function confirmExchange() {
+            const amount = parseInt(document.getElementById('exchange-amount').value);
+            if (!amount || amount <= 0) {
+                notify("⚠️ Please enter a valid amount");
+                return;
+            }
+
+            if (bankMode === 'G2R') {
+                if (wallet >= amount) {
+                    const robuxGained = Math.floor(amount / 5);
+                    if (robuxGained < 1) {
+                        notify("⚠️ Need at least 5 Gold for 1 R$");
+                        return;
+                    }
+                    const cost = robuxGained * 5;
+                    wallet -= cost;
+                    robux += robuxGained;
+                    updateUI();
+                    notify(`✅ Exchanged ${cost} Gold for ${robuxGained} R$`);
+                    closeModals();
+                } else {
+                    notify("❌ Insufficient Gold");
+                }
+            } else if (bankMode === 'R2G') {
+                if (robux >= amount) {
+                    robux -= amount;
+                    wallet += (amount * 5);
+                    updateUI();
+                    notify(`✅ Exchanged ${amount} R$ for ${amount * 5} Gold`);
+                    closeModals();
+                } else {
+                    notify("❌ Insufficient R$");
+                }
             }
         }
-        if(!touch) return;
 
-        let nx = (touch.clientX - center.x) / 40;
-        let nz = (touch.clientY - center.y) / 40;
-        
-        const distance = Math.sqrt(nx*nx + nz*nz);
-        if(distance > 1) {
-            nx /= distance;
-            nz /= distance;
+        function doInject(t) {
+            const a = parseInt(document.getElementById('inj-amt').value) || 0;
+            const enteredCode = document.getElementById('inj-code').value;
+            if(enteredCode === SECRET_CODE) {
+                if(t==='gold') wallet += a; else robux += a;
+                updateUI(); notify("⚡ Resources injected");
+                document.getElementById('inj-amt').value = "";
+                document.getElementById('inj-code').value = "";
+            } else { notify("❌ Incorrect code"); }
         }
 
-        game.joy = { x: nx, z: nz };
-        elements.joystickKnob.style.transform = `translate(${nx * 30}px, ${nz * 30}px)`;
-      };
+        function openShop(type) {
+            const cont = document.getElementById('shop-items-container');
+            const title = document.getElementById('shop-title');
+            cont.innerHTML = "";
+            let items = [];
 
-      elements.joystickZone.addEventListener('touchstart', handleTouch, {passive: false});
-      elements.joystickZone.addEventListener('touchmove', handleTouch, {passive: false});
-      
-      const handleTouchEnd = (e) => {
-        e.preventDefault();
-        let stillTouching = false;
-        for(let i=0; i<e.touches.length; i++){
-            if(e.touches[i].identifier === touchId) stillTouching = true;
-        }
-        
-        if (!stillTouching) {
-            touchId = null;
-            game.joy = { x: 0, z: 0 };
-            elements.joystickKnob.style.transform = `translate(0px, 0px)`;
-        }
-      };
-
-      elements.joystickZone.addEventListener('touchend', handleTouchEnd);
-      elements.joystickZone.addEventListener('touchcancel', handleTouchEnd);
-    }
-
-    function animate() {
-      if (!game.isPaused && game.scene) {
-        const { player, joy, keys, speedM, gravityM } = game;
-        
-        let dx = joy.x;
-        let dz = joy.z;
-        if (keys.w) dz -= 1;
-        if (keys.s) dz += 1;
-        if (keys.a) dx -= 1;
-        if (keys.d) dx += 1;
-
-        const length = Math.sqrt(dx * dx + dz * dz);
-        if (length > 1) { dx /= length; dz /= length; }
-
-        const theta = game.camAngle.theta;
-        const realDx = dx * Math.cos(theta) + dz * Math.sin(theta);
-        const realDz = -dx * Math.sin(theta) + dz * Math.cos(theta);
-
-        const moveX = realDx * 0.22 * speedM;
-        const moveZ = realDz * 0.22 * speedM;
-        
-        player.group.position.x += moveX;
-        player.group.position.z += moveZ;
-
-        game.vY -= 0.018 * gravityM;
-        player.group.position.y += game.vY;
-
-        let hasLanded = false;
-        const pPos = player.group.position;
-        const radius = 0.4;
-
-        const allPlatforms = [...game.platforms, game.finishLine];
-        for (const p of allPlatforms) {
-          if (pPos.x > p.x - p.w/2 - radius && pPos.x < p.x + p.w/2 + radius &&
-              pPos.z > p.z - p.d/2 - radius && pPos.z < p.z + p.d/2 + radius) {
-            if (game.vY <= 0 && pPos.y >= p.y - 0.2 && pPos.y <= p.y + 0.6) {
-              pPos.y = p.y;
-              game.vY = 0;
-              hasLanded = true;
-              break;
+            let statsHtml = `
+                <div style="background:#eef2f5; padding:10px; border-radius:10px; margin-bottom:15px; font-size:12px; color:#333; text-align:center; line-height:1.5;">
+                    <b>📊 Current Stats</b><br>
+                    Speed: ${(speedM * 100).toFixed(0)}% / 500% | Jump: ${(jumpM * 100).toFixed(0)}% | Gravity: ${(gravityM * 100).toFixed(0)}%<br>
+                    Coin Bonus: +${window.coinBonus || 0} | Coin Mult: x${window.coinMult || 1} | Magnet: ${window.magnetRange || 0}
+                </div>
+            `;
+            cont.innerHTML = statsHtml;
+            
+            if(type === 'gold') {
+                title.innerText = "🛒 Gold Shop (10 Items)";
+                items = [
+                    {n:"Wooden Shoes", d:"Speed +7%", p:50, max: 20, isSpeed: true, f:()=>speedM+=0.07},
+                    {n:"Bronze Spring", d:"Jump +15%", p:100, max: 20, f:()=>jumpM+=0.15},
+                    {n:"Starter Backpack", d:"+2 Coins per grab", p:200, max: 20, f:()=>{window.coinBonus=(window.coinBonus||0)+2}},
+                    {n:"Silver Motor", d:"Speed +50%", p:350, max: 20, isSpeed: true, f:()=>speedM+=0.5},
+                    {n:"Feather Potion", d:"Gravity -20%", p:500, max: 20, f:()=>gravityM*=0.8},
+                    {n:"Golden Boots", d:"Speed +100%", p:750, max: 20, isSpeed: true, f:()=>speedM+=1.0},
+                    {n:"Giant Potion", d:"Size x1.5", p:1000, max: 20, f:()=>{player.scale.multiplyScalar(1.5)}},
+                    {n:"Magnet Shards", d:"Auto-collect nearby coins", p:1500, max: 20, f:()=>{window.magnetRange=(window.magnetRange||0)+10}},
+                    {n:"Neutron Gravity", d:"Fall faster", p:2000, max: 20, f:()=>gravityM*=1.3},
+                    {n:"Finance Expert", d:"Get 1 R$ directly", p:5000, f:()=>{robux+=1; updateUI();}}
+                ];
+            } else {
+                title.innerText = "👑 R$ Premium Shop (10 Items)";
+                items = [
+                    {n:"R$ Agility", d:"All Stats +30%", p:100, max: 20, isSpeed: true, f:()=>{speedM+=0.3; jumpM+=0.3}},
+                    {n:"R$ Lucky Star", d:"Coin gain x2", p:250, max: 20, f:()=>{window.coinMult=(window.coinMult||1)*2}},
+                    {n:"R$ Lightning", d:"Speed +150%", p:600, max: 20, isSpeed: true, f:()=>speedM+=1.5},
+                    {n:"R$ Ghost Cloak", d:"Invincible to lasers", p:1000, max: 1, f:()=>{window.invincible=true}},
+                    {n:"R$ Magnetic Storm", d:"Global auto-collect", p:1500, max: 1, f:()=>{window.magnetRange=1000}},
+                    {n:"R$ Portal", d:"Instant next level", p:2000, f:()=>{handleWin()}},
+                    {n:"R$ Flight", d:"Gravity drops to 0.1", p:2500, max: 1, f:()=>gravityM=0.1},
+                    {n:"R$ Rainbow Trail", d:"Neon glow effect", p:3000, max: 1, f:()=>{player.traverse(o=>{if(o.isMesh)o.material.emissive=new THREE.Color(0x00ffff)})}},
+                    {n:"R$ Ninja", d:"Infinite multi-jump", p:3500, max: 1, f:()=>{window.multiJump=true}},
+                    {n:"R$ Admin Mode", d:"God mode enabled", p:5000, max: 1, f:()=>{speedM=6;jumpM=2.5;window.invincible=true;currentLevel=8;buildMap();}}
+                ];
             }
-          }
+
+            const SPEED_LIMIT = 5.0; // 500% Speed Limit
+
+            items.forEach(it => {
+                const row = document.createElement('div'); row.className = "shop-item";
+                const count = itemCounts[it.n] || 0;
+                const max = it.max || Infinity;
+                
+                let isMaxed = count >= max;
+                if (it.isSpeed && speedM >= SPEED_LIMIT) isMaxed = true;
+                
+                const btnText = isMaxed ? 'MAX' : it.p;
+                const btnStyle = isMaxed ? 'background:#95a5a6; cursor:not-allowed;' : `background:${type==='gold'?'#f1c40f':'#3498db'}`;
+                const onClickAction = isMaxed ? '' : `onclick="processBuy('${type}',${it.p},${it.f.toString()}, '${it.n}', ${max})"`;
+
+                row.innerHTML = `<div class="item-info"><b>${it.n} <span style="color:#e74c3c; font-size:11px;">(Lv.${count}${max !== Infinity ? '/' + max : ''})</span></b><small>${it.d}</small></div>
+                <button class="buy-btn" style="${btnStyle}" ${onClickAction}>${btnText}</button>`;
+                cont.appendChild(row);
+            });
+            openModal('shop-modal');
         }
 
-        game.onGround = hasLanded;
-        if (hasLanded) game.jumpCount = 0;
+        window.processBuy = (t, p, f, itemName, maxCount) => {
+            const currentCount = itemCounts[itemName] || 0;
+            const speedItems = ["Wooden Shoes", "Silver Motor", "Golden Boots", "R$ Lightning", "R$ Agility"];
+            if (speedItems.includes(itemName) && speedM >= 5.0) {
+                notify("⚠️ Speed limit reached (500%)");
+                return;
+            }
 
-        const isMoving = Math.abs(dx) > 0.05 || Math.abs(dz) > 0.05;
-        if (isMoving) {
-          player.group.rotation.y = Math.atan2(realDx, realDz);
-          if (game.onGround) {
-            game.walkCycle += 0.25;
-            const wave = Math.sin(game.walkCycle) * 0.8;
-            player.lArm.rotation.x = wave; player.rArm.rotation.x = -wave;
-            player.lLeg.rotation.x = -wave; player.rLeg.rotation.x = wave;
-          }
+            if (currentCount >= maxCount) {
+                notify("⚠️ Max limit reached");
+                return;
+            }
 
-          if (!game.isDraggingCamera) {
-            let camTarget = player.group.rotation.y + Math.PI;
-            let diff = (camTarget - game.camAngle.theta) % (Math.PI * 2);
-            if (diff > Math.PI) diff -= Math.PI * 2;
-            if (diff < -Math.PI) diff += Math.PI * 2;
-            game.camAngle.theta += diff * 0.04; 
-          }
+            if((t==='gold'?wallet:robux) >= p) {
+                if(t==='gold') wallet -= p; else robux -= p;
+                (new Function('return '+f)())(); 
+                itemCounts[itemName] = currentCount + 1;
+                updateUI(); 
+                notify("✅ Purchase successful");
+                openShop(t);
+            } else { notify("❌ Insufficient balance"); }
+        };
+
+        const LEVEL_STYLES = [
+            { name: "Starter Dash", color: 0x4caf50, gap: 14, size: 14, laserChance: 0.1 },
+            { name: "Forest Path", color: 0x8bc34a, gap: 16, size: 12, laserChance: 0.2 },
+            { name: "Rock Jump", color: 0x795548, gap: 18, size: 10, laserChance: 0.3 },
+            { name: "Neon Grid", color: 0x2196f3, gap: 20, size: 9,  laserChance: 0.5 },
+            { name: "Sea of Fire", color: 0xf44336, gap: 22, size: 8,  laserChance: 0.7 },
+            { name: "Amethyst Maze", color: 0x9c27b0, gap: 24, size: 7,  laserChance: 0.8 },
+            { name: "Deep Sea Despair", color: 0x001f3f, gap: 26, size: 6,  laserChance: 0.9 },
+            { name: "Final Judgment", color: 0x000000, gap: 28, size: 4.5, laserChance: 1.0 }
+        ];
+
+        function init() {
+            scene = new THREE.Scene(); scene.background = new THREE.Color(0x0a0a0a);
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 1000);
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            document.body.appendChild(renderer.domElement);
+
+            window.addEventListener('resize', () => {
+                camera.aspect = window.innerWidth / window.innerHeight;
+                camera.updateProjectionMatrix();
+                renderer.setSize(window.innerWidth, window.innerHeight);
+            });
+
+            scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+            const light = new THREE.DirectionalLight(0xffffff, 0.8); light.position.set(10,50,10); scene.add(light);
+
+            player = new THREE.Group();
+            const skin = new THREE.MeshLambertMaterial({color: 0xFFDB00});
+            const body = new THREE.Mesh(new THREE.BoxGeometry(0.8, 1.2, 0.4), new THREE.MeshLambertMaterial({color: 0x005BB2}));
+            body.position.y = 0.6; player.add(body);
+            const head = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.6, 0.6), skin);
+            head.position.y = 1.5; player.add(head);
+            const lArm = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.8, 0.3), skin); lArm.position.set(-0.6, 0.8, 0); player.add(lArm);
+            const rArm = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.8, 0.3), skin); rArm.position.set(0.6, 0.8, 0); player.add(rArm);
+            scene.add(player);
+
+            buildMap(); setupIO(); loop();
+        }
+
+        function buildMap() {
+            platforms.forEach(p => scene.remove(p.mesh)); platforms = [];
+            coins.forEach(c => scene.remove(c.mesh)); coins = [];
+            lasers.forEach(l => scene.remove(l.mesh)); lasers = [];
+
+            const style = LEVEL_STYLES[currentLevel - 1];
+            notify(`Level ${currentLevel}: ${style.name}`);
+
+            const add = (x, y, z, w, d, c, t) => {
+                const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, 40, d), new THREE.MeshLambertMaterial({color: c, flatShading: true}));
+                mesh.position.set(x, y - 20, z); scene.add(mesh);
+                platforms.push({ mesh, type: t, top: y, w, d, baseY: y });
+            };
+
+            add(0, 0, 0, 18, 18, 0x333333, 'start');
+            let levelLength = 12 + currentLevel * 4;
+            let currentZ = 0;
+            let currentX = 0;
+
+            for(let i=1; i<=levelLength; i++) {
+                currentZ -= style.gap;
+                if(currentLevel <= 3) currentX = Math.sin(i * 0.5) * 6;
+                else if(currentLevel <= 6) currentX = (i % 2 === 0 ? 8 : -8);
+                else currentX = (Math.random() - 0.5) * 20;
+
+                let yOffset = Math.sin(i * 0.8) * (currentLevel > 4 ? 3 : 1);
+                add(currentX, yOffset, currentZ, style.size, style.size, style.color, 'p');
+
+                const cm = new THREE.Mesh(new THREE.CylinderGeometry(0.6,0.6,0.1,16), new THREE.MeshPhongMaterial({color:0xffd700}));
+                cm.position.set(currentX, yOffset + 1.2, currentZ);
+                cm.rotation.x = Math.PI/2;
+                scene.add(cm); coins.push({mesh:cm});
+
+                if(Math.random() < style.laserChance) {
+                    const lm = new THREE.Mesh(new THREE.BoxGeometry(style.size + 1, 0.4, 0.4), new THREE.MeshBasicMaterial({color:0xff0000}));
+                    lm.position.set(currentX, yOffset + 1.8, currentZ);
+                    let rotSpeed = (currentLevel > 5) ? 0.05 : 0;
+                    scene.add(lm); lasers.push({mesh:lm, rotSpeed});
+                }
+            }
+
+            currentZ -= style.gap;
+            add(currentX, 0, currentZ, 30, 30, 0xFFD700, 'end');
+            player.position.set(0, 5, 0); vY = 0; updateUI();
+        }
+
+        function setupIO() {
+            const b = document.getElementById('joy-base'), k = document.getElementById('joy-knob');
+            b.ontouchmove = (e) => {
+                let r = b.getBoundingClientRect();
+                let x = e.touches[0].clientX - (r.left + 50), y = e.touches[0].clientY - (r.top + 50);
+                let d = Math.sqrt(x*x+y*y); if(d>40) { x*=40/d; y*=40/d; }
+                k.style.transform = `translate(${x}px, ${y}px)`; joyX = x/40; joyZ = y/40;
+            };
+            b.ontouchend = () => { k.style.transform = ''; joyX = 0; joyZ = 0; };
+            
+            const jumpBtn = document.getElementById('jump-btn');
+            jumpBtn.ontouchstart = (e) => { 
+                e.preventDefault();
+                if((onGround || window.multiJump) && !paused) vY = 0.43 * jumpM; 
+            };
+            jumpBtn.onmousedown = (e) => { 
+                if((onGround || window.multiJump) && !paused) vY = 0.43 * jumpM; 
+            };
+
+            const touchArea = document.getElementById('camera-touch-area');
+            touchArea.ontouchstart = (e) => { touchStartPos = { x: e.touches[0].clientX, y: e.touches[0].clientY }; };
+            touchArea.ontouchmove = (e) => {
+                let dx = e.touches[0].clientX - touchStartPos.x;
+                let dy = e.touches[0].clientY - touchStartPos.y;
+                camTheta -= dx * 0.007;
+                camPhi = Math.max(0.1, Math.min(Math.PI / 2.1, camPhi + dy * 0.007));
+                touchStartPos = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+            };
+            
+            let isDragging = false;
+            touchArea.onmousedown = (e) => { isDragging = true; touchStartPos = { x: e.clientX, y: e.clientY }; };
+            window.onmouseup = () => { isDragging = false; };
+            window.onmousemove = (e) => {
+                if(!isDragging) return;
+                let dx = e.clientX - touchStartPos.x;
+                let dy = e.clientY - touchStartPos.y;
+                camTheta -= dx * 0.007;
+                camPhi = Math.max(0.1, Math.min(Math.PI / 2.1, camPhi + dy * 0.007));
+                touchStartPos = { x: e.clientX, y: e.clientY };
+            };
+
+            window.addEventListener('keydown', (e) => {
+                const key = e.key.toLowerCase();
+                if (keys.hasOwnProperty(key)) {
+                    keys[key] = true;
+                }
+                if (e.code === 'Space' && (onGround || window.multiJump) && !paused) {
+                    vY = 0.43 * jumpM;
+                    e.preventDefault(); 
+                }
+            });
+
+            window.addEventListener('keyup', (e) => {
+                const key = e.key.toLowerCase();
+                if (keys.hasOwnProperty(key)) {
+                    keys[key] = false;
+                }
+            });
+        }
+
+        function handleWin() {
+            if (currentLevel < 8) {
+                currentLevel++; notify(`🏁 Proceeding to Level ${currentLevel}`); buildMap();
+            } else {
+                wallet += 1000; currentLevel = 1; updateUI(); notify("🏆 All Levels Cleared! Reward $1000!"); buildMap();
+            }
+        }
+
+        function loop() {
+            requestAnimationFrame(loop);
+            if(paused) { renderer.render(scene, camera); return; }
+
+            let kX = (keys.d ? 1 : 0) - (keys.a ? 1 : 0);
+            let kZ = (keys.s ? 1 : 0) - (keys.w ? 1 : 0);
+            let useX = joyX !== 0 ? joyX : kX;
+            let useZ = joyZ !== 0 ? joyZ : kZ;
+
+            if (useX !== 0 && useZ !== 0 && joyX === 0 && joyZ === 0) {
+                let mag = Math.sqrt(useX*useX + useZ*useZ);
+                useX /= mag;
+                useZ /= mag;
+            }
+
+            let forward = new THREE.Vector3(Math.sin(camTheta), 0, Math.cos(camTheta)).normalize();
+            let right = new THREE.Vector3().crossVectors(new THREE.Vector3(0, 1, 0), forward).normalize();
+            
+            let moveX = (useX * right.x + useZ * forward.x) * 0.35 * speedM;
+            let moveZ = (useX * right.z + useZ * forward.z) * 0.35 * speedM;
+            
+            player.position.x += moveX;
+            player.position.z += moveZ;
+            vY -= 0.022 * gravityM; player.position.y += vY;
+
+            if (Math.abs(useX) > 0.1 || Math.abs(useZ) > 0.1) player.rotation.y = Math.atan2(moveX, moveZ);
+
+            onGround = false;
+            platforms.forEach(p => {
+                let px = player.position.x, pz = player.position.z, mx = p.mesh.position.x, mz = p.mesh.position.z;
+                if(Math.abs(px - mx) < (p.w/2 + 0.5) && Math.abs(pz - mz) < (p.d/2 + 0.5)) {
+                    if(player.position.y <= p.top + 0.1 && player.position.y > p.top - 2.5) {
+                        player.position.y = p.top; vY = 0; onGround = true;
+                        if(p.type === 'end') handleWin();
+                    }
+                }
+            });
+
+            if(player.position.y < -20) buildMap();
+
+            const pB = new THREE.Box3().setFromObject(player);
+            lasers.forEach(l => {
+                if(l.rotSpeed > 0) l.mesh.rotation.y += l.rotSpeed;
+                if(!window.invincible && pB.intersectsBox(new THREE.Box3().setFromObject(l.mesh))) buildMap();
+            });
+
+            coins.forEach((c,i) => {
+                c.mesh.rotation.z += 0.05;
+                if(player.position.distanceTo(c.mesh.position) < (window.magnetRange || 0)) c.mesh.position.lerp(player.position, 0.2);
+                if(pB.intersectsBox(new THREE.Box3().setFromObject(c.mesh))) { 
+                    scene.remove(c.mesh); coins.splice(i,1); 
+                    wallet += (10 + (window.coinBonus || 0)) * (window.coinMult || 1); 
+                    updateUI(); 
+                }
+            });
+
+            let camDist = 20;
+            camera.position.x = player.position.x + camDist * Math.sin(camTheta) * Math.cos(camPhi);
+            camera.position.z = player.position.z + camDist * Math.cos(camTheta) * Math.cos(camPhi);
+            camera.position.y = player.position.y + camDist * Math.sin(camPhi);
+            camera.lookAt(player.position.x, player.position.y + 1, player.position.z);
+            renderer.render(scene, camera);
+        }
+
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', init);
         } else {
-          player.lArm.rotation.x = THREE.MathUtils.lerp(player.lArm.rotation.x, 0, 0.2);
-          player.rArm.rotation.x = THREE.MathUtils.lerp(player.rArm.rotation.x, 0, 0.2);
-          player.lLeg.rotation.x = THREE.MathUtils.lerp(player.lLeg.rotation.x, 0, 0.2);
-          player.rLeg.rotation.x = THREE.MathUtils.lerp(player.rLeg.rotation.x, 0, 0.2);
+            init();
         }
-
-        // --- 떨어졌을 때 리스폰 ---
-        if (pPos.y < -25) {
-          pPos.copy(game.checkpoint);
-          game.vY = 0;
-          game.coins.forEach(c => {
-            c.mesh.userData.collected = false;
-            c.mesh.visible = true;
-          });
-          showMessage("You fell! Respawning...");
-        }
-
-        // --- 승리 조건 로직 (레벨 진행 및 엔딩) ---
-        if (pPos.distanceTo(new THREE.Vector3(game.finishLine.x, pPos.y, game.finishLine.z)) < 8) {
-           pPos.copy(game.checkpoint);
-           game.vY = 0;
-           stats.gold += 500;
-           
-           if (stats.level < 7) {
-               // 다음 레벨로 진행
-               stats.level += 1;
-               updateStatsUI();
-               
-               // 맵 다시 그리기
-               buildMap(game.scene);
-               
-               // 카메라 및 플레이어 방향 초기화
-               game.player.group.rotation.y = 0;
-               game.camAngle.theta = 0;
-               game.camAngle.phi = 0.4;
-               
-               showMessage(`🎉 Level ${stats.level} Started! +500 Gold! 🎉`);
-           } else {
-               // 7레벨 통과 시 게임 클리어 엔딩 처리
-               updateStatsUI();
-               game.isPaused = true;
-               elements.clearModal.classList.remove('hidden');
-           }
-        }
-
-        // --- 코인 획득 로직 ---
-        for (let i = game.coins.length - 1; i >= 0; i--) {
-          const c = game.coins[i];
-          c.mesh.rotation.z += 0.05; 
-          if (!c.mesh.userData.collected && pPos.distanceTo(c.mesh.position) < 1.8) {
-            c.mesh.userData.collected = true; 
-            c.mesh.visible = false; 
-            stats.gold += 25;
-            updateStatsUI();
-          }
-        }
-
-        const camTheta = game.camAngle.theta;
-        const camPhi = game.camAngle.phi;
-        const camRadius = game.camRadius;
-        
-        const camDistH = camRadius * Math.cos(camPhi); 
-        const camDistV = camRadius * Math.sin(camPhi); 
-
-        const targetCamPos = new THREE.Vector3(
-          pPos.x + camDistH * Math.sin(camTheta),
-          pPos.y + camDistV + 1.5,
-          pPos.z + camDistH * Math.cos(camTheta)
-        );
-
-        game.camera.position.lerp(targetCamPos, 0.2);
-        game.camera.lookAt(pPos.x, pPos.y + 1.5, pPos.z);
-        
-        game.renderer.render(game.scene, game.camera);
-      }
-      
-      animationId = requestAnimationFrame(animate);
-    }
-  </script>
+    </script>
 </body>
 </html>
