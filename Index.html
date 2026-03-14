@@ -1,0 +1,426 @@
+import React, { useEffect, useRef, useState, useCallback } from 'react';
+import * as THREE from 'three';
+
+/**
+ * Roblox-style Obby Adventure
+ * A 3D platformer built with React and Three.js
+ */
+
+const App = () => {
+  const mountRef = useRef(null);
+  const [stats, setStats] = useState({ gold: 0, robux: 10, level: 1 });
+  const [modal, setModal] = useState(null);
+  const [ownedItems, setOwnedItems] = useState([]);
+  const [gameMsg, setGameMsg] = useState("Use WASD/Joystick to move, SPACE to jump!");
+
+  // Game Engine State (Mutable to avoid React re-render lag)
+  const game = useRef({
+    scene: null,
+    camera: null,
+    renderer: null,
+    player: { group: null, lArm: null, rArm: null, lLeg: null, rLeg: null },
+    platforms: [],
+    coins: [],
+    finishLine: null,
+    vY: 0,
+    onGround: false,
+    jumpCount: 0,
+    maxJumps: 1,
+    joy: { x: 0, z: 0 },
+    keys: { w: false, a: false, s: false, d: false, space: false },
+    speedM: 1,
+    jumpM: 1,
+    gravityM: 1,
+    walkCycle: 0,
+    isPaused: false,
+    checkpoint: new THREE.Vector3(0, 5, 0),
+  });
+
+  // --- UI Helpers ---
+  const showMessage = (msg) => {
+    setGameMsg(msg);
+    setTimeout(() => setGameMsg(""), 4000);
+  };
+
+  const handleJump = useCallback(() => {
+    const g = game.current;
+    if (g.onGround || g.jumpCount < g.maxJumps) {
+      g.vY = 0.38 * g.jumpM;
+      g.jumpCount++;
+      g.onGround = false;
+    }
+  }, []);
+
+  useEffect(() => {
+    // 1. Scene Setup
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x80dfff); // Roblox Sky Blue
+    scene.fog = new THREE.Fog(0x80dfff, 20, 100);
+    game.current.scene = scene;
+
+    const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+    game.current.camera = camera;
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.shadowMap.enabled = true;
+    mountRef.current.appendChild(renderer.domElement);
+    game.current.renderer = renderer;
+
+    // Lighting
+    scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+    const sun = new THREE.DirectionalLight(0xffffff, 0.8);
+    sun.position.set(20, 50, 20);
+    sun.castShadow = true;
+    scene.add(sun);
+
+    // 2. Character Creation (Classic Noob)
+    const pGroup = new THREE.Group();
+    const skinMat = new THREE.MeshLambertMaterial({ color: 0xFFDB00 }); // Yellow
+    const torsoMat = new THREE.MeshLambertMaterial({ color: 0x005BB2 }); // Blue
+    const legMat = new THREE.MeshLambertMaterial({ color: 0x333333 });   // Dark
+
+    const torso = new THREE.Mesh(new THREE.BoxGeometry(0.8, 1.1, 0.45), torsoMat);
+    torso.position.y = 1.05;
+    pGroup.add(torso);
+
+    const head = new THREE.Mesh(new THREE.BoxGeometry(0.65, 0.65, 0.65), skinMat);
+    head.position.y = 1.95;
+    pGroup.add(head);
+
+    const createLimb = (x, y, mat, geoW = 0.38, geoH = 1.0) => {
+      const g = new THREE.Group();
+      g.position.set(x, y, 0);
+      const m = new THREE.Mesh(new THREE.BoxGeometry(geoW, geoH, 0.38), mat);
+      m.position.y = -geoH/2;
+      g.add(m);
+      return g;
+    };
+
+    const lArm = createLimb(-0.6, 1.5, skinMat, 0.35, 0.9);
+    const rArm = createLimb(0.6, 1.5, skinMat, 0.35, 0.9);
+    const lLeg = createLimb(-0.22, 0.5, legMat);
+    const rLeg = createLimb(0.22, 0.5, legMat);
+
+    pGroup.add(lArm, rArm, lLeg, rLeg);
+    pGroup.position.copy(game.current.checkpoint);
+    scene.add(pGroup);
+    game.current.player = { group: pGroup, lArm, rArm, lLeg, rLeg };
+
+    // 3. Map Generation
+    const buildMap = () => {
+      const addPlatform = (x, y, z, w, d, color = 0x4caf50) => {
+        const mesh = new THREE.Mesh(
+          new THREE.BoxGeometry(w, 15, d),
+          new THREE.MeshLambertMaterial({ color })
+        );
+        mesh.position.set(x, y - 7.5, z);
+        scene.add(mesh);
+        game.current.platforms.push({ x, y, z, w, d });
+      };
+
+      // Spawn Area
+      addPlatform(0, 0, 0, 15, 15, 0x999999);
+
+      // Procedural Obby Steps
+      for (let i = 1; i <= 30; i++) {
+        const z = i * -8;
+        const x = Math.sin(i * 0.7) * 5;
+        const y = Math.sin(i * 0.4) * 2;
+        const color = i % 3 === 0 ? 0xff5722 : (i % 2 === 0 ? 0x2196f3 : 0x4caf50);
+        addPlatform(x, y, z, 4.5, 4.5, color);
+
+        // Add Coin
+        const coin = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.4, 0.4, 0.15, 16),
+          new THREE.MeshPhongMaterial({ color: 0xffd700, shininess: 100 })
+        );
+        coin.position.set(x, y + 1.5, z);
+        coin.rotation.x = Math.PI / 2;
+        scene.add(coin);
+        game.current.coins.push({ mesh: coin, id: i });
+      }
+
+      // Finish Line
+      const finishZ = -255;
+      const finishMesh = new THREE.Mesh(
+        new THREE.BoxGeometry(20, 15, 20),
+        new THREE.MeshLambertMaterial({ color: 0xFFD700 })
+      );
+      finishMesh.position.set(0, 0 - 7.5, finishZ);
+      scene.add(finishMesh);
+      game.current.finishLine = { x: 0, y: 0, z: finishZ, w: 20, d: 20 };
+      
+      // Winner platform decoration
+      const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.2, 8), new THREE.MeshLambertMaterial({color: 0xffffff}));
+      pole.position.set(0, 4, finishZ);
+      scene.add(pole);
+    };
+    buildMap();
+
+    // 4. Keyboard Controls Setup
+    const handleKeyDown = (e) => {
+      const k = e.key.toLowerCase();
+      if (game.current.keys.hasOwnProperty(k)) game.current.keys[k] = true;
+      if (e.code === 'Space') {
+          game.current.keys.space = true;
+          handleJump();
+      }
+    };
+    const handleKeyUp = (e) => {
+      const k = e.key.toLowerCase();
+      if (game.current.keys.hasOwnProperty(k)) game.current.keys[k] = false;
+      if (e.code === 'Space') game.current.keys.space = false;
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('keyup', handleKeyUp);
+
+    // 5. Physics & Animation Loop
+    let animationId;
+    const animate = () => {
+      const g = game.current;
+      if (!g.isPaused) {
+        const { player, joy, keys, speedM, gravityM } = g;
+        
+        // Input processing (Keyboard + Joystick)
+        let dx = joy.x;
+        let dz = joy.z;
+        if (keys.w) dz -= 1;
+        if (keys.s) dz += 1;
+        if (keys.a) dx -= 1;
+        if (keys.d) dx += 1;
+
+        // Normalize vector to prevent diagonal speed boost
+        const length = Math.sqrt(dx * dx + dz * dz);
+        if (length > 1) { dx /= length; dz /= length; }
+
+        const moveX = dx * 0.22 * speedM;
+        const moveZ = dz * 0.22 * speedM;
+        
+        player.group.position.x += moveX;
+        player.group.position.z += moveZ;
+
+        // Vertical Movement (Gravity)
+        g.vY -= 0.018 * gravityM;
+        player.group.position.y += g.vY;
+
+        // Collision Detection
+        let hasLanded = false;
+        const pPos = player.group.position;
+        const radius = 0.4;
+
+        // Check platforms and finish line
+        const allPlatforms = [...g.platforms, g.finishLine];
+        
+        for (const p of allPlatforms) {
+          if (pPos.x > p.x - p.w/2 - radius && pPos.x < p.x + p.w/2 + radius &&
+              pPos.z > p.z - p.d/2 - radius && pPos.z < p.z + p.d/2 + radius) {
+            
+            // Snap to surface if falling through it
+            if (g.vY <= 0 && pPos.y >= p.y - 0.2 && pPos.y <= p.y + 0.6) {
+              pPos.y = p.y;
+              g.vY = 0;
+              hasLanded = true;
+              break;
+            }
+          }
+        }
+
+        g.onGround = hasLanded;
+        if (hasLanded) g.jumpCount = 0;
+
+        // Animations (Walking/Jumping)
+        const isMoving = Math.abs(dx) > 0.05 || Math.abs(dz) > 0.05;
+        if (isMoving) {
+          player.group.rotation.y = Math.atan2(dx, dz);
+          if (g.onGround) {
+            g.walkCycle += 0.25;
+            const wave = Math.sin(g.walkCycle) * 0.8;
+            player.lArm.rotation.x = wave; player.rArm.rotation.x = -wave;
+            player.lLeg.rotation.x = -wave; player.rLeg.rotation.x = wave;
+          }
+        } else {
+          // Reset limbs when standing still
+          player.lArm.rotation.x = THREE.MathUtils.lerp(player.lArm.rotation.x, 0, 0.2);
+          player.rArm.rotation.x = THREE.MathUtils.lerp(player.rArm.rotation.x, 0, 0.2);
+          player.lLeg.rotation.x = THREE.MathUtils.lerp(player.lLeg.rotation.x, 0, 0.2);
+          player.rLeg.rotation.x = THREE.MathUtils.lerp(player.rLeg.rotation.x, 0, 0.2);
+        }
+
+        if (!g.onGround) {
+          // Jump Pose
+          player.lArm.rotation.x = 0.5; player.rArm.rotation.x = 0.5;
+          player.lLeg.rotation.x = -0.2; player.rLeg.rotation.x = 0.2;
+        }
+
+        // Death/Respawn
+        if (pPos.y < -20) {
+          pPos.copy(g.checkpoint);
+          g.vY = 0;
+          showMessage("You fell! Respawning...");
+        }
+
+        // Win Condition
+        if (pPos.distanceTo(new THREE.Vector3(g.finishLine.x, pPos.y, g.finishLine.z)) < 8) {
+           pPos.copy(g.checkpoint);
+           g.vY = 0;
+           setStats(s => ({ ...s, gold: s.gold + 500, level: s.level + 1 }));
+           showMessage("🎉 Course Completed! +500 Gold! 🎉");
+        }
+
+        // Coin Collection
+        for (let i = g.coins.length - 1; i >= 0; i--) {
+          const c = g.coins[i];
+          c.mesh.rotation.z += 0.05; // Spin animation
+          if (pPos.distanceTo(c.mesh.position) < 1.8) {
+            g.scene.remove(c.mesh);
+            g.coins.splice(i, 1);
+            setStats(s => ({ ...s, gold: s.gold + 25 }));
+          }
+        }
+
+        // Camera Follow
+        const targetCamPos = new THREE.Vector3(pPos.x, pPos.y + 7, pPos.z + 14);
+        g.camera.position.lerp(targetCamPos, 0.1);
+        g.camera.lookAt(pPos.x, pPos.y + 1, pPos.z);
+      }
+      
+      g.renderer.render(g.scene, g.camera);
+      animationId = requestAnimationFrame(animate);
+    };
+
+    animate();
+
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keyup', handleKeyUp);
+      cancelAnimationFrame(animationId);
+      mountRef.current?.removeChild(renderer.domElement);
+    };
+  }, [handleJump]);
+
+  return (
+    <div className="relative w-full h-screen bg-black overflow-hidden touch-none select-none">
+      <div ref={mountRef} className="absolute inset-0" />
+
+      {/* Top HUD */}
+      <div className="absolute top-6 left-6 right-6 flex justify-between items-start pointer-events-none">
+        <div className="flex gap-4">
+          <div className="bg-black/60 backdrop-blur-md border-2 border-yellow-400 px-4 py-2 rounded-2xl text-white font-black flex items-center gap-3 pointer-events-auto shadow-lg">
+            <span className="text-2xl drop-shadow-md">💰</span> 
+            <span className="text-xl">{stats.gold}</span>
+          </div>
+          <div className="bg-black/60 backdrop-blur-md border-2 border-green-400 px-4 py-2 rounded-2xl text-white font-black flex items-center gap-3 pointer-events-auto shadow-lg">
+            <span className="text-green-400">LVL</span> 
+            <span className="text-xl">{stats.level}</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Center Game Message Overlay */}
+      {gameMsg && (
+        <div className="absolute top-24 left-1/2 -translate-x-1/2 bg-black/70 text-white px-6 py-3 rounded-full font-bold text-lg animate-bounce pointer-events-none text-center shadow-xl border border-white/20">
+          {gameMsg}
+        </div>
+      )}
+
+      {/* Side Buttons */}
+      <div className="absolute left-6 top-1/2 -translate-y-1/2 flex flex-col gap-4 pointer-events-auto">
+        <button 
+          onClick={() => setModal('shop')} 
+          className="w-16 h-16 sm:w-20 sm:h-20 bg-gradient-to-b from-yellow-400 to-yellow-600 rounded-3xl shadow-xl flex flex-col items-center justify-center text-white font-black active:scale-90 transition-transform border-b-4 border-yellow-700"
+        >
+          <span className="text-2xl sm:text-3xl">🛒</span>
+          <span className="text-[10px] sm:text-xs">SHOP</span>
+        </button>
+      </div>
+
+      {/* Mobile Controls (Hidden on Desktop, Visible on Touch) */}
+      <div className="sm:hidden">
+        {/* Joystick */}
+        <div 
+          className="absolute bottom-12 left-8 w-32 h-32 bg-white/10 backdrop-blur-sm rounded-full border-4 border-white/30 flex items-center justify-center pointer-events-auto shadow-[0_0_30px_rgba(0,0,0,0.3)]"
+          onTouchStart={(e) => {
+             const r = e.currentTarget.getBoundingClientRect();
+             const t = e.touches[0];
+             game.current.joy = { 
+               x: Math.max(-1, Math.min(1, (t.clientX - (r.left + 64)) / 40)), 
+               z: Math.max(-1, Math.min(1, (t.clientY - (r.top + 64)) / 40)) 
+             };
+          }}
+          onTouchMove={(e) => {
+            const r = e.currentTarget.getBoundingClientRect();
+            const t = e.touches[0];
+            game.current.joy = { 
+              x: Math.max(-1, Math.min(1, (t.clientX - (r.left + 64)) / 40)), 
+              z: Math.max(-1, Math.min(1, (t.clientY - (r.top + 64)) / 40)) 
+            };
+          }}
+          onTouchEnd={() => game.current.joy = { x: 0, z: 0 }}
+        >
+          <div className="w-14 h-14 bg-white/80 rounded-full shadow-inner" />
+        </div>
+
+        {/* Jump Button */}
+        <button 
+          onPointerDown={handleJump} 
+          className="absolute bottom-12 right-8 w-24 h-24 bg-white/20 backdrop-blur-sm border-4 border-white/50 rounded-full text-white font-black text-xl active:scale-75 transition-transform pointer-events-auto shadow-[0_0_30px_rgba(0,0,0,0.3)] flex items-center justify-center"
+        >
+          JUMP
+        </button>
+      </div>
+
+      {/* Shop Modal */}
+      {modal === 'shop' && (
+        <div className="absolute inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center p-4 z-50">
+          <div className="bg-slate-900 rounded-[40px] w-full max-w-md p-8 shadow-2xl border border-slate-700">
+            <div className="flex justify-between items-center mb-6">
+              <h2 className="text-3xl font-black text-white">🛒 Upgrade Shop</h2>
+              <button onClick={() => setModal(null)} className="text-4xl text-slate-400 hover:text-white transition-colors">×</button>
+            </div>
+            
+            <div className="space-y-4">
+              {[
+                { id: 'double', name: "Double Jump", desc: "Jump one more time in mid-air!", cost: 50, icon: "👟", effect: () => { game.current.maxJumps = 2; showMessage("Double Jump Unlocked!"); } },
+                { id: 'speed', name: "Speed Coil", desc: "Run 50% faster!", cost: 150, icon: "⚡", effect: () => { game.current.speedM = 1.5; showMessage("Speed Coil Equipped!"); } },
+                { id: 'gravity', name: "Moon Gravity", desc: "Float like a feather", cost: 300, icon: "🌑", effect: () => { game.current.gravityM = 0.5; game.current.jumpM = 0.8; showMessage("Moon Gravity Enabled!"); } },
+              ].map(item => {
+                const isOwned = ownedItems.includes(item.id);
+                const canAfford = stats.gold >= item.cost;
+                
+                return (
+                  <div key={item.id} className="flex justify-between items-center bg-slate-800 p-4 rounded-3xl border border-slate-700">
+                    <div className="flex gap-4 items-center">
+                      <span className="text-4xl bg-slate-700 p-2 rounded-2xl">{item.icon}</span>
+                      <div>
+                        <p className="font-black text-white text-lg">{item.name}</p>
+                        <p className="text-xs text-slate-400 mt-1">{item.desc}</p>
+                      </div>
+                    </div>
+                    <button 
+                      disabled={isOwned || !canAfford}
+                      onClick={() => {
+                          setStats(s => ({...s, gold: s.gold - item.cost}));
+                          setOwnedItems(p => [...p, item.id]);
+                          item.effect();
+                      }}
+                      className={`
+                        ${isOwned ? 'bg-green-500 text-white' : canAfford ? 'bg-yellow-500 hover:bg-yellow-400 text-slate-900' : 'bg-slate-700 text-slate-500'} 
+                        font-black px-4 py-3 rounded-xl transition-colors shadow-lg
+                      `}
+                    >
+                      {isOwned ? 'OWNED' : `💰 ${item.cost}`}
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default App;
