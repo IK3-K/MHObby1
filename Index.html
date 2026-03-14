@@ -43,7 +43,12 @@
 
         .inj-input { width: 100%; padding: 12px; margin-bottom: 12px; border: 1px solid #ddd; border-radius: 10px; box-sizing: border-box; font-size: 16px; }
 
-        /* Mobile Controls - Hidden on Desktop by default */
+        /* Admin Warp Button Grid */
+        .warp-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 10px; }
+        .warp-btn { background: var(--secret); color: white; border: none; border-radius: 10px; padding: 10px; font-weight: bold; cursor: pointer; font-size: 13px; }
+        .warp-btn:active { transform: scale(0.95); }
+
+        /* Mobile Controls */
         #joy-base { 
             position: absolute; bottom: 30px; left: 30px; width: 100px; height: 100px; 
             background: rgba(255,255,255,0.1); border-radius: 50%; border: 2px solid rgba(255,255,255,0.2); 
@@ -57,7 +62,6 @@
             font-weight: bold; pointer-events: auto; font-size: 18px; 
         }
 
-        /* Show controls only on devices with touch capabilities (coarse pointer) */
         @media (pointer: coarse) {
             #joy-base { display: block; }
             #jump-btn { display: flex; }
@@ -119,11 +123,25 @@
         <div class="modal-box">
             <div class="modal-header"><h2>⚡ Admin Panel</h2><span class="close-btn" onclick="closeModals()">×</span></div>
             <div class="modal-content">
+                <p style="font-weight:bold; font-size:14px; margin:0 0 10px 0;">Resource Injection</p>
                 <input type="number" id="inj-amt" class="inj-input" placeholder="Amount to inject">
                 <input type="password" id="inj-code" class="inj-input" placeholder="Enter admin code">
-                <div style="display:flex; gap:10px; margin-top:10px;">
+                <div style="display:flex; gap:10px; margin-bottom:20px;">
                     <button style="flex:1; padding:15px; background:var(--gold); color:white; border:none; border-radius:10px; font-weight:bold;" onclick="doInject('gold')">Inject Gold</button>
                     <button style="flex:1; padding:15px; background:var(--robux); color:white; border:none; border-radius:10px; font-weight:bold;" onclick="doInject('robux')">Inject R$</button>
+                </div>
+
+                <hr style="border:0; border-top:1px solid #eee; margin-bottom:15px;">
+                <p style="font-weight:bold; font-size:14px; margin:0 0 10px 0;">🚩 Level Teleport (Requires Code)</p>
+                <div class="warp-grid">
+                    <button class="warp-btn" onclick="warpToLevel(1)">Lv.1</button>
+                    <button class="warp-btn" onclick="warpToLevel(2)">Lv.2</button>
+                    <button class="warp-btn" onclick="warpToLevel(3)">Lv.3</button>
+                    <button class="warp-btn" onclick="warpToLevel(4)">Lv.4</button>
+                    <button class="warp-btn" onclick="warpToLevel(5)">Lv.5</button>
+                    <button class="warp-btn" onclick="warpToLevel(6)">Lv.6</button>
+                    <button class="warp-btn" onclick="warpToLevel(7)">Lv.7</button>
+                    <button class="warp-btn" onclick="warpToLevel(8)">Lv.8</button>
                 </div>
             </div>
         </div>
@@ -238,8 +256,20 @@
                 if(t==='gold') wallet += a; else robux += a;
                 updateUI(); notify("⚡ Resources injected");
                 document.getElementById('inj-amt').value = "";
-                document.getElementById('inj-code').value = "";
             } else { notify("❌ Incorrect code"); }
+        }
+
+        function warpToLevel(lvl) {
+            const enteredCode = document.getElementById('inj-code').value;
+            if(enteredCode === SECRET_CODE) {
+                currentLevel = lvl;
+                buildMap();
+                updateUI();
+                notify(`⚡ Teleported to Level ${lvl}`);
+                closeModals();
+            } else {
+                notify("❌ Incorrect code (Enter in Admin Panel)");
+            }
         }
 
         function openShop(type) {
@@ -287,7 +317,7 @@
                 ];
             }
 
-            const SPEED_LIMIT = 5.0; // 500% Speed Limit
+            const SPEED_LIMIT = 5.0; 
 
             items.forEach(it => {
                 const row = document.createElement('div'); row.className = "shop-item";
